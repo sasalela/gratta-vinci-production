@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Gratta e Vinci - Gioco</title>
+  <style>
+    body { background: #667eea; color: #222; font-family: Arial, sans-serif; margin:0; padding:0; display:flex; align-items:center; justify-content:center; min-height:100vh;}
+    .card { background:#fff; border-radius:15px; box-shadow:0 20px 60px rgba(0,0,0,0.2); max-width:400px; padding:30px; }
+    h2 { text-align:center; margin-bottom:25px; }
+    button { background:#667eea; color:#fff; padding:12px 30px; border:none; border-radius:8px; cursor:pointer; margin-top:14px; font-weight:bold; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🎰 Gratta & Vinci</h2>
+    anvas id="scratch" width="300" height="150" style="background:#ccc; border-radius:8px; display:block; margin:auto;"></canvas>
+    <div id="result" style="text-align:center; margin-top:18px;"></div>
+    <button onclick="location.reload()">Rigioca</button>
+  </div>
+  <script>
+    // Semplice canvas gratta e vinci
+    const canvas = document.getElementById('scratch');
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#667eea';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.font = "30px Arial";
+    ctx.fillStyle = "#fff";
+    ctx.fillText("???", 120, 85);
+
+    let scratched = 0;
+    canvas.addEventListener('mousemove', function(e){
+      if(e.buttons === 1){
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(e.offsetX, e.offsetY, 16, 0, 2 * Math.PI);
+        ctx.fill();
+        scratched++;
+        if(scratched > 40){
+          document.getElementById('result').innerHTML = '🎉 Hai vinto una birra gratis!';
+        }
+      }
+    });
+  </script>
+</body>
+</html>
