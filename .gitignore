@@ -1,0 +1,24 @@
+# Dipendenze Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+.next/
+out/
+build/
+dist/
+
+# Environment
+.env.local
+.env.*.local
