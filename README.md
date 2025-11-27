@@ -27,3 +27,6 @@ Gratta &amp; Vinci - Sistema di giochi promozionali con QR code, multi-tenant, a
 - ✅ Drag Mechanics: Smooth scratch effect
 - ✅ Reset Button: Functionality OK
 - ✅ Responsive Design: All devices
+
+
+<!-- Deployment trigger: Fresh redeploy requested - 2025-11-27 -->
