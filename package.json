@@ -1,31 +1,25 @@
 {
-  "name": "gratta-vinci-production",
+  "name": "gratta-vinci-multitenant",
   "version": "2.0.0",
-  "description": "Gratta & Vinci - Sistema di giochi promozionali con QR code, multi-tenant, anti-frode IP",
-  "main": "api/index.ts",
-  "type": "module",
+  "description": "Sistema completo multi-tenant per gratta e vinci",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "vercel dev",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "deploy": "vercel --prod",
+    "test": "vitest run"
   },
   "dependencies": {
     "hono": "^4.0.0",
+    "zod": "^3.22.0",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.1.2",
-    "zod": "^3.22.4",
-    "qrcode": "^1.5.3",
-    "pdf-lib": "^1.17.1"
+    "jsonwebtoken": "^9.0.2",
+    "qrcode": "^1.5.3"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^20.0.0",
     "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.7",
-    "typescript": "^5.3.3",
-    "wrangler": "^3.26.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "@types/jsonwebtoken": "^9.0.5",
+    "vitest": "^1.0.0"
   }
 }
