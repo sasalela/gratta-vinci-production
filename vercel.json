@@ -4,6 +4,10 @@
     {
       "src": "api/index.ts",
       "use": "@vercel/node"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -12,16 +16,69 @@
       "dest": "/api/index.ts"
     },
     {
-      "src": "/play/(.*)",
+      "src": "/play/([^/]+)/([^/]+)",
       "dest": "/public/index.html"
     },
     {
-      "src": "/(admin-dashboard|store-dashboard|content-generator)\\.html",
-      "dest": "/public/$1.html"
+      "src": "/admin-dashboard.html",
+      "dest": "/public/admin-dashboard.html"
     },
     {
-      "src": "/(.*)",
-      "dest": "/public/$1"
+      "src": "/store-dashboard.html",
+      "dest": "/public/store-dashboard.html"
+    },
+    {
+      "src": "/content-generator.html",
+      "dest": "/public/content-generator.html"
+    },
+    {
+      "src": "/",
+      "dest": "/public/index.html"
     }
   ]
 }
+```
+
+---
+
+## 🚀 REDEPLOY VELOCE
+
+### Metodo 1: Via GitHub (consigliato)
+
+1. Vai su: https://github.com/TUO-USERNAME/gratta-vinci-production
+2. Clicca su `vercel.json`
+3. Clicca sulla matita ✏️ per modificare
+4. Cancella tutto e incolla il nuovo contenuto sopra
+5. Scorri in basso
+6. Scrivi nel commit: `Fix: vercel.json routes`
+7. Clicca **"Commit changes"**
+8. Aspetta 1-2 minuti → Vercel redeploya automaticamente
+
+### Metodo 2: Via Dashboard Vercel
+
+1. Vai su Vercel Dashboard
+2. Clicca sul tuo progetto
+3. Clicca su "Deployments"
+4. Clicca sui 3 puntini ⋯ dell'ultimo deploy
+5. Clicca "Redeploy"
+6. MA PRIMA devi modificare `vercel.json` su GitHub!
+
+---
+
+## 🎯 ALTERNATIVA: Struttura File Semplificata
+
+Se il problema persiste, usa questa struttura più semplice:
+
+### Opzione A: Tutto in root (niente cartella public)
+
+Sposta tutti i file HTML dalla cartella `public/` alla **root del progetto**:
+```
+gratta-vinci-production/
+├── api/
+│   └── index.ts
+├── index.html              ← spostato qui
+├── admin-dashboard.html    ← spostato qui
+├── store-dashboard.html    ← spostato qui
+├── content-generator.html  ← spostato qui
+├── package.json
+└── vercel.json
