@@ -3,18 +3,7 @@
   "builds": [
     {
       "src": "api/index.ts",
-      "use": "@vercel/node",
-      "config": {
-        "runtime": "nodejs18.x"
-      }
-    },
-    {
-      "src": "public/**",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "*.html",
-      "use": "@vercel/static"
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -23,20 +12,16 @@
       "dest": "/api/index.ts"
     },
     {
-      "src": "/(.*)\\.html",
+      "src": "/play/(.*)",
+      "dest": "/public/index.html"
+    },
+    {
+      "src": "/(admin-dashboard|store-dashboard|content-generator)\\.html",
       "dest": "/public/$1.html"
     },
     {
-      "src": "/public/(.*)",
-      "dest": "/public/$1"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/public/$1"
     }
-  ],
-  "env": {
-    "JWT_SECRET": "@gratta_jwt_secret",
-    "NODE_ENV": "production"
-  }
+  ]
 }
