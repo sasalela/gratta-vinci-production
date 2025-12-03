@@ -1,282 +1,499 @@
-// src/index.ts - Backend Multi-Tenant Completo
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { createHash } from 'crypto';
 
-interface Env {
-  DB: D1Database;
-  JWT_SECRET: string;
-  KV: KVNamespace;
-}
+// ==========================================
+// IN-MEMORY STORAGE (sostituisci con DB in produzione)
+// ==========================================
 
-// ========== VALIDATION SCHEMAS ==========
+const stores: any[] = [
+  {
+    id: '1',
+    name: 'Bar da Giorgio',
+    slug: 'bar-giorgio',
+    email: 'bar@giorgio.it',
+    active: true,
+    createdAt: new Date().toISOString()
+  }
+];
+
+const users: any[] = [];
+const campaigns: any[] = [
+  {
+    id: '1',
+    storeId: '1',
+    name: 'Birra Gratis',
+    slug: 'birra-gratis',
+    description: 'Gratta e vinci una birra gratis!',
+    prizes: [
+      { name: 'Birra Gratis', emoji: '🍺', probability: 50, description: 'Una birra omaggio' },
+      { name: 'Riprova', emoji: '😢', probability: 50, description: 'Riprova la prossima volta' }
+    ],
+    active: true,
+    startDate: '2024-01-01',
+    endDate: '2025-12-31',
+    maxPlaysPerUser: 1,
+    createdAt: new Date().toISOString()
+  }
+];
+const sessions: any[] = [];
+const vouchers: any[] = [];
+
+// ==========================================
+// SCHEMAS
+// ==========================================
+
+const LoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6)
+});
+
 const StoreSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().min(1),
   slug: z.string().regex(/^[a-z0-9-]+$/),
   email: z.string().email(),
   phone: z.string().optional(),
   address: z.string().optional(),
-  logo: z.string().optional(),
   active: z.boolean().default(true)
 });
 
-const StoreUserSchema = z.object({
-  storeId: z.string(),
+const UserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
-  name: z.string(),
-  role: z.enum(['owner', 'manager', 'staff']).default('staff')
+  name: z.string().min(1),
+  role: z.enum(['store_owner', 'staff']),
+  storeId: z.string()
 });
 
 const CampaignSchema = z.object({
   storeId: z.string(),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1),
   slug: z.string().regex(/^[a-z0-9-]+$/),
   description: z.string().optional(),
-  requiredFields: z.array(z.enum(['name', 'phone', 'age'])),
   prizes: z.array(z.object({
     name: z.string(),
     emoji: z.string(),
     probability: z.number().min(0).max(100),
-    description: z.string(),
-    quantity: z.number().optional()
+    description: z.string()
   })),
   active: z.boolean().default(true),
   startDate: z.string(),
   endDate: z.string(),
-  maxPlaysPerDay: z.number().optional(),
-  maxTotalPlays: z.number().optional()
+  maxPlaysPerUser: z.number().default(1)
 });
 
-const app = new Hono<{ Bindings: Env }>();
+const PlaySchema = z.object({
+  storeSlug: z.string(),
+  campaignSlug: z.string(),
+  email: z.string().email(),
+  privacyConsent: z.boolean()
+});
 
-app.use('*', cors({
-  origin: '*',
-  credentials: true,
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization']
-}));
-
-// ========== AUTH HELPERS ==========
-function signToken(payload: any, secret: string): string {
-  return jwt.sign(payload, secret, { algorithm: 'HS256', expiresIn: '7d' });
-}
-
-function verifyToken(token: string, secret: string): any {
-  return jwt.verify(token, secret, { algorithms: ['HS256'] });
-}
-
-async function authMiddleware(c: any, next: any) {
-  try {
-    const token = c.req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) return c.json({ error: 'No token' }, 401);
-
-    const decoded = verifyToken(token, c.env.JWT_SECRET);
-    c.set('user', decoded);
-    await next();
-  } catch (error) {
-    return c.json({ error: 'Invalid token' }, 401);
-  }
-}
+// ==========================================
+// UTILITIES
+// ==========================================
 
 function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-// ========== DATABASE INIT ==========
-async function initDatabase(db: D1Database) {
-  const tables = [
-    `CREATE TABLE IF NOT EXISTS stores (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      slug TEXT NOT NULL UNIQUE,
-      email TEXT NOT NULL,
-      phone TEXT,
-      address TEXT,
-      logo TEXT,
-      active INTEGER DEFAULT 1,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
-    )`,
-
-    `CREATE TABLE IF NOT EXISTS store_users (
-      id TEXT PRIMARY KEY,
-      storeId TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      passwordHash TEXT NOT NULL,
-      name TEXT NOT NULL,
-      role TEXT NOT NULL,
-      active INTEGER DEFAULT 1,
-      createdAt TEXT NOT NULL,
-      lastLogin TEXT,
-      FOREIGN KEY (storeId) REFERENCES stores(id)
-    )`,
-
-    `CREATE TABLE IF NOT EXISTS campaigns (
-      id TEXT PRIMARY KEY,
-      storeId TEXT NOT NULL,
-      name TEXT NOT NULL,
-      slug TEXT NOT NULL,
-      description TEXT,
-      requiredFields TEXT NOT NULL,
-      prizes TEXT NOT NULL,
-      qrCode TEXT,
-      active INTEGER DEFAULT 1,
-      startDate TEXT NOT NULL,
-      endDate TEXT NOT NULL,
-      maxPlaysPerDay INTEGER,
-      maxTotalPlays INTEGER,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL,
-      UNIQUE(storeId, slug),
-      FOREIGN KEY (storeId) REFERENCES stores(id)
-    )`,
-
-    `CREATE TABLE IF NOT EXISTS game_sessions (
-      id TEXT PRIMARY KEY,
-      campaignId TEXT NOT NULL,
-      storeId TEXT NOT NULL,
-      ipAddress TEXT NOT NULL,
-      userEmail TEXT NOT NULL,
-      userData TEXT NOT NULL,
-      prizeWon TEXT,
-      voucherCode TEXT UNIQUE,
-      playedAt TEXT NOT NULL,
-      voucherRedeemed INTEGER DEFAULT 0,
-      FOREIGN KEY (campaignId) REFERENCES campaigns(id),
-      FOREIGN KEY (storeId) REFERENCES stores(id),
-      UNIQUE(ipAddress, campaignId)
-    )`,
-
-    `CREATE TABLE IF NOT EXISTS ip_restrictions (
-      id TEXT PRIMARY KEY,
-      ipAddress TEXT NOT NULL,
-      campaignId TEXT NOT NULL,
-      storeId TEXT NOT NULL,
-      sessionId TEXT NOT NULL,
-      timestamp TEXT NOT NULL,
-      UNIQUE(ipAddress, campaignId),
-      FOREIGN KEY (campaignId) REFERENCES campaigns(id),
-      FOREIGN KEY (storeId) REFERENCES stores(id)
-    )`,
-
-    `CREATE TABLE IF NOT EXISTS vouchers (
-      code TEXT PRIMARY KEY,
-      campaignId TEXT NOT NULL,
-      storeId TEXT NOT NULL,
-      sessionId TEXT NOT NULL,
-      prizeDescription TEXT NOT NULL,
-      createdAt TEXT NOT NULL,
-      expiresAt TEXT NOT NULL,
-      redeemed INTEGER DEFAULT 0,
-      redeemedAt TEXT,
-      redeemedBy TEXT,
-      FOREIGN KEY (campaignId) REFERENCES campaigns(id),
-      FOREIGN KEY (storeId) REFERENCES stores(id)
-    )`,
-
-    `CREATE TABLE IF NOT EXISTS admin_users (
-      id TEXT PRIMARY KEY,
-      email TEXT NOT NULL UNIQUE,
-      passwordHash TEXT NOT NULL,
-      name TEXT NOT NULL,
-      role TEXT DEFAULT 'admin',
-      active INTEGER DEFAULT 1,
-      createdAt TEXT NOT NULL
-    )`,
-
-    `CREATE INDEX IF NOT EXISTS idx_stores_slug ON stores(slug)`,
-    `CREATE INDEX IF NOT EXISTS idx_campaigns_store ON campaigns(storeId)`,
-    `CREATE INDEX IF NOT EXISTS idx_sessions_store ON game_sessions(storeId)`,
-    `CREATE INDEX IF NOT EXISTS idx_sessions_campaign ON game_sessions(campaignId)`,
-    `CREATE INDEX IF NOT EXISTS idx_vouchers_store ON vouchers(storeId)`
-  ];
-
-  for (const sql of tables) {
-    await db.prepare(sql).run();
-  }
+function hashPassword(password: string): string {
+  return createHash('sha256').update(password).digest('hex');
 }
 
-// ========== SUPER ADMIN AUTH ==========
-app.post('/api/admin/login', async (c) => {
+function generateVoucherCode(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${code}-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function selectPrize(prizes: any[]): any {
+  const random = Math.random() * 100;
+  let cumulative = 0;
+  
+  for (const prize of prizes) {
+    cumulative += prize.probability;
+    if (random <= cumulative) {
+      return prize;
+    }
+  }
+  
+  return prizes[prizes.length - 1];
+}
+
+function getAuthToken(req: VercelRequest): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  return authHeader.substring(7);
+}
+
+// ==========================================
+// MAIN HANDLER
+// ==========================================
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Content-Type', 'application/json');
+
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  const url = new URL(req.url!, `http://${req.headers.host}`);
+  const path = url.pathname;
+  const method = req.method;
+
   try {
-    const { email, password } = await c.req.json();
+    console.log(`[${method}] ${path}`);
 
-    const admin = await c.env.DB.prepare(
-      'SELECT * FROM admin_users WHERE email = ? AND active = 1'
-    ).bind(email).first();
+    // ==========================================
+    // PUBLIC ROUTES
+    // ==========================================
 
-    if (!admin || !await bcrypt.compare(password, admin.passwordHash)) {
-      return c.json({ success: false, error: 'Invalid credentials' }, 401);
+    // Health Check
+    if (path === '/api/health') {
+      return res.json({
+        status: 'ok',
+        version: '2.0.0',
+        timestamp: new Date().toISOString()
+      });
     }
 
-    const token = signToken({
-      id: admin.id,
-      email: admin.email,
-      role: 'superadmin'
-    }, c.env.JWT_SECRET);
+    // Login
+    if (path === '/api/auth/login' && method === 'POST') {
+      const validation = LoginSchema.safeParse(req.body);
+      
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          errors: validation.error.errors
+        });
+      }
+      
+      const { email, password } = validation.data;
+      const hashedPassword = hashPassword(password);
+      
+      // Check super admin
+      const adminEmail = process.env.ADMIN_EMAIL || 'admin@grattavinci.it';
+      const adminPassword = hashPassword(process.env.ADMIN_PASSWORD || 'admin123');
+      
+      if (email === adminEmail && hashedPassword === adminPassword) {
+        return res.json({
+          success: true,
+          data: {
+            token: 'mock-super-admin-token',
+            user: { email: adminEmail, role: 'super_admin' }
+          }
+        });
+      }
+      
+      // Check database users
+      const user = users.find((u: any) => u.email === email && u.password === hashedPassword);
+      
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid credentials'
+        });
+      }
+      
+      return res.json({
+        success: true,
+        data: {
+          token: `mock-token-${user.id}`,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            storeId: user.storeId
+          }
+        }
+      });
+    }
 
-    return c.json({
-      success: true,
-      token,
-      user: { id: admin.id, email: admin.email, name: admin.name, role: 'superadmin' }
+    // Play Game
+    if (path === '/api/public/play' && method === 'POST') {
+      const validation = PlaySchema.safeParse(req.body);
+      
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          errors: validation.error.errors
+        });
+      }
+      
+      const { storeSlug, campaignSlug, email, privacyConsent } = validation.data;
+      
+      if (!privacyConsent) {
+        return res.status(400).json({
+          success: false,
+          error: 'Privacy consent required'
+        });
+      }
+      
+      // Get client IP
+      const clientIp = req.headers['x-forwarded-for'] || 
+                       req.headers['x-real-ip'] || 
+                       'unknown';
+      
+      // Find store
+      const store = stores.find((s: any) => s.slug === storeSlug);
+      if (!store) {
+        return res.status(404).json({
+          success: false,
+          error: 'Store not found'
+        });
+      }
+      
+      // Find campaign
+      const campaign = campaigns.find((c: any) => 
+        c.storeId === store.id && c.slug === campaignSlug && c.active
+      );
+      
+      if (!campaign) {
+        return res.status(404).json({
+          success: false,
+          error: 'Campaign not found'
+        });
+      }
+      
+      // Check date range
+      const now = new Date();
+      const startDate = new Date(campaign.startDate);
+      const endDate = new Date(campaign.endDate);
+      
+      if (now < startDate || now > endDate) {
+        return res.status(400).json({
+          success: false,
+          error: 'Campaign not active'
+        });
+      }
+      
+      // Check previous plays
+      const sessionKey = `${clientIp}_${campaign.id}`;
+      const previousSessions = sessions.filter((s: any) => s.sessionKey === sessionKey);
+      
+      if (previousSessions.length >= campaign.maxPlaysPerUser) {
+        return res.status(429).json({
+          success: false,
+          error: 'Maximum plays reached'
+        });
+      }
+      
+      // Select prize
+      const selectedPrize = selectPrize(campaign.prizes);
+      
+      // Generate voucher
+      const voucherCode = generateVoucherCode();
+      const sessionId = generateId();
+      const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      
+      // Save session
+      sessions.push({
+        id: sessionId,
+        sessionKey,
+        campaignId: campaign.id,
+        email,
+        clientIp: typeof clientIp === 'string' ? clientIp : clientIp[0],
+        createdAt: now.toISOString()
+      });
+      
+      // Save voucher
+      vouchers.push({
+        id: generateId(),
+        code: voucherCode,
+        sessionId,
+        campaignId: campaign.id,
+        storeId: store.id,
+        prize: selectedPrize,
+        email,
+        redeemed: false,
+        expiresAt,
+        createdAt: now.toISOString()
+      });
+      
+      return res.json({
+        success: true,
+        data: {
+          sessionId,
+          prize: selectedPrize,
+          voucherCode,
+          expiresAt
+        }
+      });
+    }
+
+    // ==========================================
+    // PROTECTED ROUTES
+    // ==========================================
+
+    const token = getAuthToken(req);
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized'
+      });
+    }
+
+    // Mock auth - in produzione usa JWT vero
+    const isAdmin = token.includes('super-admin');
+    const userId = token.replace('mock-token-', '');
+
+    // Stores
+    if (path === '/api/stores' && method === 'GET') {
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      return res.json({ success: true, data: stores });
+    }
+
+    if (path === '/api/stores' && method === 'POST') {
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      
+      const validation = StoreSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          errors: validation.error.errors
+        });
+      }
+      
+      const store = {
+        id: generateId(),
+        ...validation.data,
+        createdAt: new Date().toISOString()
+      };
+      
+      stores.push(store);
+      return res.json({ success: true, data: store });
+    }
+
+    if (path.startsWith('/api/stores/') && method === 'DELETE') {
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      
+      const id = path.split('/').pop();
+      const index = stores.findIndex((s: any) => s.id === id);
+      if (index !== -1) {
+        stores.splice(index, 1);
+      }
+      return res.json({ success: true });
+    }
+
+    // Users
+    if (path === '/api/users' && method === 'GET') {
+      return res.json({ success: true, data: users });
+    }
+
+    if (path === '/api/users' && method === 'POST') {
+      const validation = UserSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          errors: validation.error.errors
+        });
+      }
+      
+      const hashedPassword = hashPassword(validation.data.password);
+      const user = {
+        id: generateId(),
+        ...validation.data,
+        password: hashedPassword,
+        createdAt: new Date().toISOString()
+      };
+      
+      users.push(user);
+      
+      const { password, ...userWithoutPassword } = user;
+      return res.json({ success: true, data: userWithoutPassword });
+    }
+
+    // Campaigns
+    if (path === '/api/campaigns' && method === 'GET') {
+      const storeId = url.searchParams.get('storeId');
+      let filteredCampaigns = campaigns;
+      
+      if (storeId) {
+        filteredCampaigns = campaigns.filter((c: any) => c.storeId === storeId);
+      }
+      
+      return res.json({ success: true, data: filteredCampaigns });
+    }
+
+    if (path === '/api/campaigns' && method === 'POST') {
+      const validation = CampaignSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          errors: validation.error.errors
+        });
+      }
+      
+      const campaign = {
+        id: generateId(),
+        ...validation.data,
+        createdAt: new Date().toISOString()
+      };
+      
+      campaigns.push(campaign);
+      return res.json({ success: true, data: campaign });
+    }
+
+    if (path.startsWith('/api/campaigns/') && method === 'DELETE') {
+      const id = path.split('/').pop();
+      const index = campaigns.findIndex((c: any) => c.id === id);
+      if (index !== -1) {
+        campaigns.splice(index, 1);
+      }
+      return res.json({ success: true });
+    }
+
+    // Stats
+    if (path.startsWith('/api/stats/')) {
+      const storeId = path.split('/').pop();
+      const storeSessions = sessions.filter((s: any) => {
+        const campaign = campaigns.find((c: any) => c.id === s.campaignId);
+        return campaign && campaign.storeId === storeId;
+      });
+      
+      const storeVouchers = vouchers.filter((v: any) => v.storeId === storeId);
+      
+      return res.json({
+        success: true,
+        data: {
+          totalPlays: storeSessions.length,
+          totalVouchers: storeVouchers.length,
+          redeemedVouchers: storeVouchers.filter((v: any) => v.redeemed).length,
+          pendingVouchers: storeVouchers.filter((v: any) => !v.redeemed).length
+        }
+      });
+    }
+
+    // 404
+    return res.status(404).json({
+      success: false,
+      error: 'Not found'
     });
-  } catch (error) {
-    return c.json({ success: false, error: 'Login failed' }, 500);
+
+  } catch (error: any) {
+    console.error('API Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message
+    });
   }
-});
-
-// ========== STORE MANAGEMENT (SUPER ADMIN ONLY) ==========
-app.get('/api/admin/stores', authMiddleware, async (c) => {
-  try {
-    const user = c.get('user');
-    if (user.role !== 'superadmin') {
-      return c.json({ error: 'Unauthorized' }, 403);
-    }
-
-    const stores = await c.env.DB.prepare(
-      'SELECT * FROM stores ORDER BY createdAt DESC'
-    ).all();
-
-    return c.json({ success: true, data: stores.results });
-  } catch (error) {
-    return c.json({ success: false, error: 'Failed to fetch stores' }, 500);
-  }
-});
-
-app.post('/api/admin/stores', authMiddleware, async (c) => {
-  try {
-    const user = c.get('user');
-    if (user.role !== 'superadmin') {
-      return c.json({ error: 'Unauthorized' }, 403);
-    }
-
-    const body = await c.req.json();
-    const validation = StoreSchema.safeParse(body);
-
-    if (!validation.success) {
-      return c.json({ success: false, errors: validation.error.errors }, 400);
-    }
-
-    const { data } = validation;
-    const id = generateId();
-    const now = new Date().toISOString();
-
-    await c.env.DB.prepare(
-      `INSERT INTO stores (id, name, slug, email, phone, address, logo, active, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      id, data.name, data.slug, data.email,
-      data.phone || null, data.address || null, data.logo || null,
-      data.active ? 1 : 0, now, now
-    ).run();
-
-    return c.json({ success: true, data: { id, ...data } }, 201);
-  } catch (error) {
-    return c.json({ success: false, error: 'Failed to create store' }, 500);
-  }
-});
-
-export default app;
+}
