@@ -7,6 +7,9 @@ const campaignSlug = params.get('campaign');
 const setupError = document.getElementById('setupError');
 const setupForm = document.getElementById('setupForm');
 const gameSection = document.getElementById('gameSection');
+const brandLogo = document.getElementById('brandLogo');
+const storeLabel = document.getElementById('storeLabel');
+const campaignTitle = document.getElementById('campaignTitle');
 const campaignInfo = document.getElementById('campaignInfo');
 const dynamicFields = document.getElementById('dynamicFields');
 const privacyCheckbox = document.getElementById('privacyConsent');
@@ -15,7 +18,7 @@ const playBtn = document.getElementById('playBtn');
 const canvas = document.getElementById('scratch');
 const ctx = canvas.getContext('2d');
 const resultDiv = document.getElementById('result');
-const resetBtn = document.getElementById('resetBtn');
+const finalNotice = document.getElementById('finalNotice');
 
 const threshold = 40;
 let gameData = null;
@@ -64,6 +67,19 @@ function renderDynamicFields(fields) {
     .join('');
 }
 
+function applyCampaignBranding(config) {
+  document.documentElement.style.setProperty('--brand-primary', config.store.primaryColor || '#667eea');
+  document.documentElement.style.setProperty('--brand-secondary', config.store.secondaryColor || '#764ba2');
+  storeLabel.textContent = config.store.name;
+  campaignTitle.textContent = config.name;
+  document.getElementById('subtitle').textContent = config.description || 'Compila i dati e scopri se hai vinto.';
+
+  if (config.store.logoUrl) {
+    brandLogo.innerHTML = `<img src="${config.store.logoUrl}" alt="${config.store.name}">`;
+    show(brandLogo);
+  }
+}
+
 async function validateSetup() {
   if (!storeSlug || !campaignSlug) {
     setupError.textContent =
@@ -82,9 +98,8 @@ async function validateSetup() {
     }
 
     campaignConfig = payload.data;
-    document.documentElement.style.setProperty('--brand-primary', campaignConfig.store.primaryColor || '#667eea');
-    document.documentElement.style.setProperty('--brand-secondary', campaignConfig.store.secondaryColor || '#764ba2');
-    campaignInfo.textContent = `${campaignConfig.store.name} · ${campaignConfig.name}`;
+    applyCampaignBranding(campaignConfig);
+    campaignInfo.textContent = 'Completa i campi richiesti per registrare la tua partecipazione.';
     renderDynamicFields(campaignConfig.customerFields || []);
     show(setupForm);
     return true;
@@ -167,21 +182,34 @@ function initGame() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   resultDiv.textContent = '';
   resultDiv.className = 'result';
+  hide(finalNotice);
 
-  ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 22px Arial';
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(0, '#fff7d6');
+  gradient.addColorStop(1, '#ffd166');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#172033';
+  ctx.font = 'bold 24px Arial';
   ctx.textAlign = 'center';
   const hiddenText = gameData.won
     ? `${gameData.prize.emoji || ''} ${gameData.prize.name}`
     : campaignConfig?.loseMessage || gameData.loseMessage;
-  ctx.fillText(hiddenText, canvas.width / 2, canvas.height / 2);
+  ctx.fillText(hiddenText, canvas.width / 2, canvas.height / 2 + 8);
 
-  ctx.fillStyle = '#999';
+  const cover = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  cover.addColorStop(0, '#8b95a7');
+  cover.addColorStop(0.5, '#c5ccd8');
+  cover.addColorStop(1, '#7b8495');
+  ctx.fillStyle = cover;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 18px Arial';
-  ctx.fillText('Raschia per scoprire', canvas.width / 2, canvas.height / 2);
+  ctx.font = 'bold 22px Arial';
+  ctx.fillText('GRATTA QUI', canvas.width / 2, canvas.height / 2 - 4);
+  ctx.font = '15px Arial';
+  ctx.fillText('Scopri subito il risultato', canvas.width / 2, canvas.height / 2 + 24);
 }
 
 function scratchAt(x, y) {
@@ -214,11 +242,13 @@ function showResult() {
       `Codice voucher: <code>${gameData.voucherCode}</code><br>` +
       `Scade il: ${expiresAt}`;
     resultDiv.className = 'result winner';
+    show(finalNotice);
     return;
   }
 
   resultDiv.textContent = gameData.loseMessage || campaignConfig?.loseMessage || 'Nessun premio questa volta.';
   resultDiv.className = 'result loser';
+  show(finalNotice);
 }
 
 function getCanvasPosition(event) {
@@ -274,11 +304,5 @@ canvas.addEventListener('touchend', () => {
 });
 
 playBtn.addEventListener('click', startPlay);
-
-resetBtn.addEventListener('click', () => {
-  if (!gameData) return;
-  revealed = false;
-  initGame();
-});
 
 validateSetup();

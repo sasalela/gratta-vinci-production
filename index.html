@@ -7,14 +7,18 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>🎰 Gratta & Vinci</h1>
-        <p id="subtitle">Inserisci i tuoi dati per giocare e scoprire il premio!</p>
+    <main class="game-shell">
+        <section class="hero">
+            <div id="brandLogo" class="brand-logo hidden"></div>
+            <p id="storeLabel" class="eyebrow">Gioco promozionale</p>
+            <h1 id="campaignTitle">Gratta & Vinci</h1>
+            <p id="subtitle">Inserisci i dati richiesti e scopri se hai vinto.</p>
+        </section>
 
         <div id="setupError" class="message error hidden"></div>
 
         <div id="setupForm" class="card hidden">
-            <h2>Partecipa</h2>
+            <h2>Partecipa al gioco</h2>
             <p id="campaignInfo" class="campaign-info"></p>
             <div id="dynamicFields"></div>
             <label class="checkbox-label">
@@ -22,16 +26,18 @@
                 Accetto il trattamento dei dati personali per partecipare al gioco
             </label>
             <div id="formError" class="message error hidden"></div>
-            <button id="playBtn" type="button">Gioca</button>
+            <button id="playBtn" type="button">Inizia e gratta</button>
         </div>
 
         <div id="gameSection" class="card hidden">
-            <h2>Gratta e Vinci</h2>
-            <canvas id="scratch" width="300" height="150"></canvas>
+            <p class="eyebrow">Un solo tentativo</p>
+            <h2>Raschia la card</h2>
+            <p class="scratch-help">Passa il dito sulla card per scoprire l’esito. La giocata vale una sola volta.</p>
+            <canvas id="scratch" width="360" height="190"></canvas>
             <div id="result"></div>
-            <button id="resetBtn" type="button">Raschia di nuovo</button>
+            <p id="finalNotice" class="final-notice hidden">Giocata registrata. Conserva il codice se hai vinto e mostralo al negoziante.</p>
         </div>
-    </div>
+    </main>
 
     <script src="app.js"></script>
 </body>
