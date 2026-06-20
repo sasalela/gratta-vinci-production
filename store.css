@@ -214,26 +214,33 @@ textarea:focus {
   gap: 10px;
 }
 
-button {
+button,
+.button {
   background: #667eea;
   border: 0;
   border-radius: 999px;
   color: #fff;
   cursor: pointer;
+  display: inline-block;
   font-weight: 700;
   margin-top: 0;
   padding: 11px 18px;
+  text-align: center;
+  text-decoration: none;
 }
 
-button.primary {
+button.primary,
+.button.primary {
   background: #667eea;
 }
 
-button.secondary {
+button.secondary,
+.button.secondary {
   background: #172033;
 }
 
-button.ghost {
+button.ghost,
+.button.ghost {
   background: #eef2f7;
   color: #172033;
 }
@@ -315,6 +322,13 @@ button.full {
 
 .prize-list.compact {
   margin: 8px 0 0;
+}
+
+.format-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .prize-row {

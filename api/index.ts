@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import { createHash } from 'crypto';
+import QRCode from 'qrcode';
 import { prisma } from '../lib/db';
 
 // ==========================================
@@ -319,6 +320,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         database: 'connected',
         timestamp: new Date().toISOString()
       });
+    }
+
+    if (path === '/api/public/qr' && method === 'GET') {
+      const text = url.searchParams.get('text');
+      if (!text) {
+        return res.status(400).json({ success: false, error: 'Text is required' });
+      }
+
+      const svg = await QRCode.toString(text, {
+        type: 'svg',
+        errorCorrectionLevel: 'H',
+        margin: 1,
+        width: 512,
+        color: {
+          dark: '#172033',
+          light: '#ffffff'
+        }
+      });
+
+      res.setHeader('Content-Type', 'image/svg+xml');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.status(200).send(svg);
     }
 
     if (path === '/api/auth/login' && method === 'POST') {

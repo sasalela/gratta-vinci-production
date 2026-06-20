@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Materiali Promo — Gratta & Vinci</title>
+  <link rel="stylesheet" href="content.css">
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Materiali promozionali</p>
+        <h1>Genera locandine e grafiche schermo</h1>
+        <p id="storeLabel" class="muted">Seleziona una campagna e scarica i formati pronti all’uso.</p>
+      </div>
+      <div class="actions">
+        <a href="/store.html" class="button ghost">Torna al pannello</a>
+      </div>
+    </header>
+
+    <div id="errorBox" class="message error hidden"></div>
+    <div id="successBox" class="message success hidden"></div>
+
+    <section id="contentApp" class="layout hidden">
+      <aside class="card controls">
+        <h2>Impostazioni</h2>
+        <label for="campaignSelect">Campagna</label>
+        <select id="campaignSelect"></select>
+
+        <label for="formatSelect">Formato anteprima</label>
+        <select id="formatSelect">
+          <option value="a4">PDF A4 verticale</option>
+          <option value="16x9">Schermo 16:9 orizzontale</option>
+          <option value="4x3">Schermo 4:3 orizzontale</option>
+          <option value="vertical">Schermo verticale 9:16</option>
+          <option value="square">Schermo quadrato</option>
+        </select>
+
+        <label for="headlineInput">Titolo principale</label>
+        <input id="headlineInput" type="text" value="Inquadra e vinci">
+
+        <label for="subtitleInput">Testo promozionale</label>
+        <textarea id="subtitleInput" rows="3">Partecipa al gioco promozionale e scopri subito se hai vinto.</textarea>
+
+        <label for="ctaInput">Call to action</label>
+        <input id="ctaInput" type="text" value="Inquadra il QR code">
+
+        <button id="renderBtn" type="button" class="primary">Aggiorna anteprima</button>
+
+        <hr>
+
+        <h3>Download</h3>
+        <button id="downloadPdfBtn" type="button">PDF A4 verticale</button>
+        <button id="download16x9Btn" type="button">PNG 16:9</button>
+        <button id="download4x3Btn" type="button">PNG 4:3</button>
+        <button id="downloadVerticalBtn" type="button">PNG verticale</button>
+        <button id="downloadSquareBtn" type="button">PNG quadrato</button>
+        <button id="downloadQrBtn" type="button" class="secondary">QR separato</button>
+      </aside>
+
+      <section class="preview-panel">
+        <div class="preview-toolbar">
+          <div>
+            <h2>Anteprima</h2>
+            <p id="playUrlLabel" class="muted"></p>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="promoCanvas"></canvas>
+        </div>
+      </section>
+    </section>
+
+    <section id="loginHint" class="card hidden">
+      <h2>Accesso richiesto</h2>
+      <p>Entra prima nel pannello negozio, poi torna qui per generare i materiali.</p>
+      <a href="/store.html" class="button primary">Vai al login negozio</a>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="content.js"></script>
+</body>
+</html>

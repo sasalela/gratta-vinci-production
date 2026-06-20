@@ -40,6 +40,18 @@
     {
       "src": "store.css",
       "use": "@vercel/static"
+    },
+    {
+      "src": "content.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "content.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "content.css",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -70,6 +82,18 @@
     {
       "src": "/store.css",
       "dest": "/store.css"
+    },
+    {
+      "src": "/content.html",
+      "dest": "/content.html"
+    },
+    {
+      "src": "/content.js",
+      "dest": "/content.js"
+    },
+    {
+      "src": "/content.css",
+      "dest": "/content.css"
     },
     {
       "src": "/app.js",
