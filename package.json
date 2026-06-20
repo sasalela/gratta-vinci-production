@@ -3,7 +3,7 @@
   "version": "2.1.0",
   "description": "Sistema multi-tenant per campagne Gratta & Vinci",
   "scripts": {
-    "dev": "vercel dev",
+    "dev": "npx vercel dev --listen 3000",
     "deploy": "vercel --prod",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@vercel/node": "^3.0.0",
+    "vercel": "^54.14.2",
     "prisma": "^5.22.0",
     "tsx": "^4.19.0",
     "typescript": "^5.4.5"

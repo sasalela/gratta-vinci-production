@@ -16,12 +16,60 @@
     {
       "src": "style.css",
       "use": "@vercel/static"
+    },
+    {
+      "src": "admin.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "admin.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "admin.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "store.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "store.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "store.css",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
       "dest": "/api/index.ts"
+    },
+    {
+      "src": "/admin.html",
+      "dest": "/admin.html"
+    },
+    {
+      "src": "/admin.js",
+      "dest": "/admin.js"
+    },
+    {
+      "src": "/admin.css",
+      "dest": "/admin.css"
+    },
+    {
+      "src": "/store.html",
+      "dest": "/store.html"
+    },
+    {
+      "src": "/store.js",
+      "dest": "/store.js"
+    },
+    {
+      "src": "/store.css",
+      "dest": "/store.css"
     },
     {
       "src": "/app.js",

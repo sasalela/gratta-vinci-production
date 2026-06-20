@@ -8,7 +8,7 @@ const setupError = document.getElementById('setupError');
 const setupForm = document.getElementById('setupForm');
 const gameSection = document.getElementById('gameSection');
 const campaignInfo = document.getElementById('campaignInfo');
-const emailInput = document.getElementById('email');
+const dynamicFields = document.getElementById('dynamicFields');
 const privacyCheckbox = document.getElementById('privacyConsent');
 const formError = document.getElementById('formError');
 const playBtn = document.getElementById('playBtn');
@@ -19,6 +19,7 @@ const resetBtn = document.getElementById('resetBtn');
 
 const threshold = 40;
 let gameData = null;
+let campaignConfig = null;
 let revealed = false;
 let scratching = false;
 
@@ -40,7 +41,30 @@ function clearFormError() {
   hide(formError);
 }
 
-function validateSetup() {
+function getDeviceKey() {
+  const key = 'gv_device_key';
+  let value = localStorage.getItem(key);
+  if (!value) {
+    value = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(key, value);
+  }
+  return value;
+}
+
+function renderDynamicFields(fields) {
+  dynamicFields.innerHTML = fields
+    .filter((field) => field.enabled)
+    .map((field) => {
+      const type = field.key === 'birthDate' ? 'date' : field.key === 'email' ? 'email' : field.key === 'marketingConsent' ? 'checkbox' : 'text';
+      if (type === 'checkbox') {
+        return `<label class="checkbox-label"><input type="checkbox" data-customer-field="${field.key}"> ${field.label}</label>`;
+      }
+      return `<label for="field_${field.key}">${field.label}${field.required ? ' *' : ''}</label><input id="field_${field.key}" type="${type}" data-customer-field="${field.key}" ${field.required ? 'required' : ''}>`;
+    })
+    .join('');
+}
+
+async function validateSetup() {
   if (!storeSlug || !campaignSlug) {
     setupError.textContent =
       'URL non valido. Usa: /?store=bar-giorgio&campaign=birra-gratis';
@@ -50,19 +74,46 @@ function validateSetup() {
     return false;
   }
 
-  campaignInfo.textContent = `Negozio: ${storeSlug} · Campagna: ${campaignSlug}`;
-  show(setupForm);
-  return true;
+  try {
+    const response = await fetch(`/api/public/campaign?store=${encodeURIComponent(storeSlug)}&campaign=${encodeURIComponent(campaignSlug)}`);
+    const payload = await response.json();
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Campagna non disponibile.');
+    }
+
+    campaignConfig = payload.data;
+    document.documentElement.style.setProperty('--brand-primary', campaignConfig.store.primaryColor || '#667eea');
+    document.documentElement.style.setProperty('--brand-secondary', campaignConfig.store.secondaryColor || '#764ba2');
+    campaignInfo.textContent = `${campaignConfig.store.name} · ${campaignConfig.name}`;
+    renderDynamicFields(campaignConfig.customerFields || []);
+    show(setupForm);
+    return true;
+  } catch (error) {
+    setupError.textContent = error.message;
+    show(setupError);
+    hide(setupForm);
+    hide(gameSection);
+    return false;
+  }
+}
+
+function collectCustomerData() {
+  const data = {};
+  document.querySelectorAll('[data-customer-field]').forEach((input) => {
+    if (input.type === 'checkbox') {
+      data[input.dataset.customerField] = input.checked;
+    } else {
+      data[input.dataset.customerField] = input.value.trim();
+    }
+  });
+  return data;
 }
 
 async function startPlay() {
   clearFormError();
 
-  const email = emailInput.value.trim();
-  if (!email) {
-    showFormError('Inserisci un indirizzo email valido.');
-    return;
-  }
+  const customerData = collectCustomerData();
+  const email = customerData.email;
 
   if (!privacyCheckbox.checked) {
     showFormError('Devi accettare il consenso privacy per giocare.');
@@ -80,6 +131,8 @@ async function startPlay() {
         storeSlug,
         campaignSlug,
         email,
+        customerData,
+        deviceKey: getDeviceKey(),
         privacyConsent: true
       })
     });
@@ -118,11 +171,10 @@ function initGame() {
   ctx.fillStyle = '#FFD700';
   ctx.font = 'bold 22px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText(
-    `${gameData.prize.emoji} ${gameData.prize.name}`,
-    canvas.width / 2,
-    canvas.height / 2
-  );
+  const hiddenText = gameData.won
+    ? `${gameData.prize.emoji || ''} ${gameData.prize.name}`
+    : campaignConfig?.loseMessage || gameData.loseMessage;
+  ctx.fillText(hiddenText, canvas.width / 2, canvas.height / 2);
 
   ctx.fillStyle = '#999';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -155,12 +207,18 @@ function showResult() {
   if (revealed || !gameData) return;
   revealed = true;
 
-  const expiresAt = new Date(gameData.expiresAt).toLocaleDateString('it-IT');
-  resultDiv.innerHTML =
-    `<strong>${gameData.prize.emoji} ${gameData.prize.name}</strong><br>` +
-    `Codice voucher: <code>${gameData.voucherCode}</code><br>` +
-    `Scade il: ${expiresAt}`;
-  resultDiv.className = 'result winner';
+  if (gameData.won) {
+    const expiresAt = new Date(gameData.expiresAt).toLocaleDateString('it-IT');
+    resultDiv.innerHTML =
+      `<strong>${gameData.prize.emoji || ''} ${gameData.prize.name}</strong><br>` +
+      `Codice voucher: <code>${gameData.voucherCode}</code><br>` +
+      `Scade il: ${expiresAt}`;
+    resultDiv.className = 'result winner';
+    return;
+  }
+
+  resultDiv.textContent = gameData.loseMessage || campaignConfig?.loseMessage || 'Nessun premio questa volta.';
+  resultDiv.className = 'result loser';
 }
 
 function getCanvasPosition(event) {
@@ -223,6 +281,4 @@ resetBtn.addEventListener('click', () => {
   initGame();
 });
 
-if (validateSetup()) {
-  show(setupForm);
-}
+validateSetup();

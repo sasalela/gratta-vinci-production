@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Gratta & Vinci</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Admin Gratta &amp; Vinci</h1>
+    <p class="subtitle">Verifica dati salvati nel database (sola lettura)</p>
+
+    <section id="loginSection" class="card">
+      <h2>Accedi</h2>
+      <label for="adminEmail">Email admin</label>
+      <input type="email" id="adminEmail" autocomplete="username" required>
+      <label for="adminPassword">Password</label>
+      <input type="password" id="adminPassword" autocomplete="current-password" required>
+      <div id="loginError" class="message error hidden"></div>
+      <button id="loginBtn" type="button">Accedi</button>
+    </section>
+
+    <section id="dashboardSection" class="hidden">
+      <div class="toolbar">
+        <span id="adminUserLabel"></span>
+        <div class="toolbar-actions">
+          <button id="refreshBtn" type="button">Aggiorna</button>
+          <button id="logoutBtn" type="button" class="secondary">Esci</button>
+        </div>
+      </div>
+      <p class="note">Mostra al massimo le ultime 100 righe per tabella.</p>
+      <div id="loadError" class="message error hidden"></div>
+
+      <div class="card">
+        <h2>Alert</h2>
+        <div id="alertsTable" class="table-wrap"></div>
+      </div>
+
+      <div class="card">
+        <h2>Campagne</h2>
+        <div id="campaignsTable" class="table-wrap"></div>
+      </div>
+
+      <div class="card">
+        <h2>Partecipazioni</h2>
+        <div id="participationsTable" class="table-wrap"></div>
+      </div>
+
+      <div class="card">
+        <h2>Voucher</h2>
+        <div id="vouchersTable" class="table-wrap"></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

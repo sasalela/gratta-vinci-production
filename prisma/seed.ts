@@ -1,11 +1,11 @@
 import { PrismaClient } from '@prisma/client';
+import { createHash } from 'crypto';
 
 const prisma = new PrismaClient();
 
-const demoPrizes = [
-  { name: 'Birra Gratis', emoji: '🍺', probability: 50, description: 'Una birra omaggio' },
-  { name: 'Riprova', emoji: '😢', probability: 50, description: 'Riprova la prossima volta' }
-];
+function hashPassword(password: string): string {
+  return createHash('sha256').update(password).digest('hex');
+}
 
 async function main() {
   const store = await prisma.store.upsert({
@@ -15,11 +15,30 @@ async function main() {
       name: 'Bar da Giorgio',
       slug: 'bar-giorgio',
       email: 'bar@giorgio.it',
+      primaryColor: '#667eea',
+      secondaryColor: '#764ba2',
+      subscriptionExpiresAt: new Date('2026-12-31'),
       active: true
     }
   });
 
-  await prisma.campaign.upsert({
+  await prisma.user.upsert({
+    where: { email: 'bar@giorgio.it' },
+    update: {
+      storeId: store.id,
+      active: true
+    },
+    create: {
+      email: 'bar@giorgio.it',
+      passwordHash: hashPassword('password123'),
+      name: 'Bar da Giorgio',
+      role: 'store_owner',
+      storeId: store.id,
+      active: true
+    }
+  });
+
+  const campaign = await prisma.campaign.upsert({
     where: {
       storeId_slug: {
         storeId: store.id,
@@ -32,7 +51,17 @@ async function main() {
       name: 'Birra Gratis',
       slug: 'birra-gratis',
       description: 'Gratta e vinci una birra gratis!',
-      prizes: demoPrizes,
+      prizes: [],
+      gameType: 'scratch_card',
+      customerFields: [
+        { key: 'name', label: 'Nome', required: true, enabled: true },
+        { key: 'email', label: 'Email', required: true, enabled: true },
+        { key: 'phone', label: 'Telefono', required: false, enabled: true },
+        { key: 'marketingConsent', label: 'Consenso marketing', required: false, enabled: true }
+      ],
+      playLimitMode: 'per_campaign',
+      loseMessage: 'Nessun premio questa volta.',
+      voucherValidityDays: 15,
       active: true,
       startDate: new Date('2024-01-01'),
       endDate: new Date('2026-12-31'),
@@ -40,7 +69,32 @@ async function main() {
     }
   });
 
-  console.log('Seed completato: store bar-giorgio, campagna birra-gratis');
+  await prisma.prize.upsert({
+    where: { id: 'demo-prize-birra-gratis' },
+    update: {
+      campaignId: campaign.id,
+      name: 'Birra Gratis',
+      emoji: '🍺',
+      description: 'Una birra omaggio',
+      winProbability: 50,
+      totalQuantity: 10,
+      active: true
+    },
+    create: {
+      id: 'demo-prize-birra-gratis',
+      campaignId: campaign.id,
+      name: 'Birra Gratis',
+      emoji: '🍺',
+      description: 'Una birra omaggio',
+      winProbability: 50,
+      totalQuantity: 10,
+      remainingQuantity: 10,
+      active: true
+    }
+  });
+
+  console.log('Seed completato: store bar-giorgio, utente negozio, campagna e premi demo');
+  console.log('Login negozio demo: bar@giorgio.it / password123');
 }
 
 main()

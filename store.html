@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pannello Negozio — Gratta & Vinci</title>
+  <link rel="stylesheet" href="store.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Pannello Negozio</h1>
+    <p class="subtitle">Gestione campagne, premi, giocate e voucher.</p>
+
+    <section id="loginSection" class="card">
+      <h2>Accesso negozio</h2>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username">
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password">
+      <div id="loginError" class="message error hidden"></div>
+      <button id="loginBtn" type="button">Accedi</button>
+    </section>
+
+    <section id="appSection" class="hidden">
+      <div class="toolbar">
+        <div>
+          <strong id="storeName"></strong>
+          <span id="userLabel"></span>
+        </div>
+        <div>
+          <button id="refreshBtn" type="button">Aggiorna</button>
+          <button id="logoutBtn" type="button" class="secondary">Esci</button>
+        </div>
+      </div>
+      <div id="appError" class="message error hidden"></div>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Crea campagna</h2>
+          <label>Nome</label>
+          <input id="campaignName" type="text" placeholder="Birra gratis">
+          <label>Slug</label>
+          <input id="campaignSlug" type="text" placeholder="birra-gratis">
+          <label>Descrizione</label>
+          <textarea id="campaignDescription" rows="3"></textarea>
+          <label>Data inizio</label>
+          <input id="startDate" type="date">
+          <label>Data fine</label>
+          <input id="endDate" type="date">
+          <label>Limite gioco</label>
+          <select id="playLimitMode">
+            <option value="per_campaign">Una volta per campagna</option>
+            <option value="per_day">Una volta al giorno</option>
+          </select>
+          <label>Scadenza voucher (giorni)</label>
+          <input id="voucherValidityDays" type="number" min="1" value="15">
+          <label>Messaggio perdita</label>
+          <input id="loseMessage" type="text" value="Nessun premio questa volta.">
+          <fieldset>
+            <legend>Dati richiesti al giocatore</legend>
+            <label><input type="checkbox" data-field="name" checked> Nome obbligatorio</label>
+            <label><input type="checkbox" data-field="email" checked> Email obbligatoria</label>
+            <label><input type="checkbox" data-field="phone"> Telefono</label>
+            <label><input type="checkbox" data-field="birthDate"> Data nascita</label>
+            <label><input type="checkbox" data-field="marketingConsent"> Consenso marketing</label>
+          </fieldset>
+          <button id="createCampaignBtn" type="button">Crea campagna</button>
+        </section>
+
+        <section class="card">
+          <h2>Aggiungi premio</h2>
+          <label>Campagna</label>
+          <select id="prizeCampaign"></select>
+          <label>Nome premio</label>
+          <input id="prizeName" type="text" placeholder="Birra gratis">
+          <label>Emoji</label>
+          <input id="prizeEmoji" type="text" placeholder="🍺">
+          <label>Descrizione</label>
+          <input id="prizeDescription" type="text">
+          <label>Quantità disponibili</label>
+          <input id="prizeQuantity" type="number" min="0" value="10">
+          <label>Percentuale vincita</label>
+          <input id="prizeProbability" type="number" min="0" max="100" value="10">
+          <button id="createPrizeBtn" type="button">Aggiungi premio</button>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2>Alert</h2>
+        <div id="alertsList"></div>
+      </section>
+
+      <section class="card">
+        <h2>Campagne</h2>
+        <div id="campaignsTable" class="table-wrap"></div>
+      </section>
+
+      <section class="card">
+        <h2>Valida voucher</h2>
+        <div class="inline-form">
+          <input id="voucherCode" type="text" placeholder="Codice voucher">
+          <button id="validateVoucherBtn" type="button">Verifica</button>
+          <button id="redeemVoucherBtn" type="button">Riscatta</button>
+        </div>
+        <div id="voucherResult"></div>
+      </section>
+
+      <section class="card">
+        <h2>Partecipazioni</h2>
+        <div id="participationsTable" class="table-wrap"></div>
+      </section>
+
+      <section class="card">
+        <h2>Voucher</h2>
+        <div id="vouchersTable" class="table-wrap"></div>
+      </section>
+    </section>
+  </div>
+
+  <script src="store.js"></script>
+</body>
+</html>
