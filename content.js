@@ -125,6 +125,18 @@ function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
   return y;
 }
 
+function fitText(ctx, text, maxWidth, startSize, minSize, weight = 900) {
+  let size = startSize;
+  do {
+    ctx.font = `${weight} ${size}px Arial`;
+    if (ctx.measureText(text).width <= maxWidth) {
+      return size;
+    }
+    size -= 2;
+  } while (size > minSize);
+  return minSize;
+}
+
 function roundedRect(ctx, x, y, width, height, radius) {
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -172,9 +184,16 @@ async function renderCanvas(formatKey = formatSelect.value) {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const pad = Math.round(Math.min(canvas.width, canvas.height) * 0.075);
-  const cardRadius = Math.round(Math.min(canvas.width, canvas.height) * 0.035);
-  roundedRect(ctx, pad, pad, canvas.width - pad * 2, canvas.height - pad * 2, cardRadius);
+  const minSide = Math.min(canvas.width, canvas.height);
+  const pad = Math.round(minSide * 0.065);
+  const cardRadius = Math.round(minSide * 0.035);
+  const card = {
+    x: pad,
+    y: pad,
+    w: canvas.width - pad * 2,
+    h: canvas.height - pad * 2
+  };
+  roundedRect(ctx, card.x, card.y, card.w, card.h, cardRadius);
   ctx.fillStyle = 'rgba(255,255,255,0.94)';
   ctx.fill();
 
@@ -182,10 +201,11 @@ async function renderCanvas(formatKey = formatSelect.value) {
   ctx.fillStyle = '#172033';
 
   const isWide = canvas.width > canvas.height;
-  const contentWidth = canvas.width - pad * 3;
-  const logoSize = Math.round(Math.min(canvas.width, canvas.height) * (isWide ? 0.09 : 0.11));
+  const isSquare = Math.abs(canvas.width - canvas.height) < minSide * 0.05;
+  const contentWidth = card.w - pad * 1.3;
+  const logoSize = Math.round(minSide * (isWide ? 0.085 : isSquare ? 0.09 : 0.105));
   const logoX = canvas.width / 2 - logoSize / 2;
-  const logoY = pad * 1.45;
+  const logoY = card.y + pad * 0.58;
 
   if (state.store.logoUrl) {
     try {
@@ -202,40 +222,80 @@ async function renderCanvas(formatKey = formatSelect.value) {
     drawInitialLogo(ctx, logoX, logoY, logoSize, primary);
   }
 
-  ctx.font = `700 ${Math.round(canvas.height * (isWide ? 0.032 : 0.026))}px Arial`;
+  const storeFont = Math.round(minSide * (isWide ? 0.034 : 0.032));
+  ctx.font = `800 ${storeFont}px Arial`;
   ctx.fillStyle = primary;
-  ctx.fillText(state.store.name, canvas.width / 2, logoY + logoSize + pad * 0.45);
+  ctx.fillText(state.store.name, canvas.width / 2, logoY + logoSize + storeFont * 1.15);
 
   ctx.fillStyle = '#172033';
-  ctx.font = `900 ${Math.round(canvas.height * (isWide ? 0.09 : 0.055))}px Arial`;
-  const titleY = logoY + logoSize + pad * (isWide ? 1.05 : 0.95);
-  drawWrappedText(ctx, headlineInput.value || 'Inquadra e vinci', canvas.width / 2, titleY, contentWidth, Math.round(canvas.height * 0.075), 2);
+  const headline = headlineInput.value || 'Inquadra e vinci';
+  const titleSize = fitText(
+    ctx,
+    headline,
+    contentWidth,
+    Math.round(minSide * (isWide ? 0.075 : isSquare ? 0.072 : 0.085)),
+    Math.round(minSide * 0.045),
+    900
+  );
+  ctx.font = `900 ${titleSize}px Arial`;
+  const titleY = logoY + logoSize + storeFont * 2.2;
+  const afterTitleY = drawWrappedText(
+    ctx,
+    headline,
+    canvas.width / 2,
+    titleY,
+    contentWidth,
+    Math.round(titleSize * 1.12),
+    2
+  );
 
-  ctx.font = `700 ${Math.round(canvas.height * (isWide ? 0.045 : 0.035))}px Arial`;
+  const prizeSize = Math.round(minSide * (isWide ? 0.04 : isSquare ? 0.038 : 0.045));
+  ctx.font = `800 ${prizeSize}px Arial`;
   ctx.fillStyle = secondary;
   const prizeText = mainPrize ? `${mainPrize.emoji || ''} ${mainPrize.name}`.trim() : campaign.name;
-  drawWrappedText(ctx, prizeText, canvas.width / 2, titleY + canvas.height * (isWide ? 0.16 : 0.13), contentWidth, Math.round(canvas.height * 0.05), 2);
+  const afterPrizeY = drawWrappedText(
+    ctx,
+    prizeText,
+    canvas.width / 2,
+    afterTitleY + prizeSize * 0.75,
+    contentWidth * 0.9,
+    Math.round(prizeSize * 1.22),
+    2
+  );
 
-  ctx.font = `400 ${Math.round(canvas.height * (isWide ? 0.032 : 0.024))}px Arial`;
+  const bodySize = Math.round(minSide * (isWide ? 0.028 : isSquare ? 0.026 : 0.03));
+  ctx.font = `500 ${bodySize}px Arial`;
   ctx.fillStyle = '#4b5563';
-  drawWrappedText(ctx, subtitleInput.value, canvas.width / 2, titleY + canvas.height * (isWide ? 0.24 : 0.22), contentWidth * 0.85, Math.round(canvas.height * 0.04), 3);
+  drawWrappedText(
+    ctx,
+    subtitleInput.value,
+    canvas.width / 2,
+    afterPrizeY + bodySize * 1.1,
+    contentWidth * 0.78,
+    Math.round(bodySize * 1.55),
+    isWide ? 2 : 3
+  );
 
-  const qrSize = Math.round(Math.min(canvas.width, canvas.height) * (isWide ? 0.24 : 0.34));
+  const qrSize = Math.round(minSide * (isWide ? 0.28 : isSquare ? 0.28 : 0.32));
   const qrX = canvas.width / 2 - qrSize / 2;
-  const qrY = isWide ? canvas.height - pad - qrSize - pad * 0.55 : canvas.height - pad - qrSize - pad * 1.1;
+  const qrCenterY = card.y + card.h * (isWide ? 0.64 : isSquare ? 0.66 : 0.69);
+  const qrY = qrCenterY - qrSize / 2;
 
-  roundedRect(ctx, qrX - 22, qrY - 22, qrSize + 44, qrSize + 44, 28);
+  const qrPad = Math.round(minSide * 0.025);
+  roundedRect(ctx, qrX - qrPad, qrY - qrPad, qrSize + qrPad * 2, qrSize + qrPad * 2, Math.round(minSide * 0.025));
   ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
   ctx.fillStyle = '#172033';
-  ctx.font = `900 ${Math.round(canvas.height * (isWide ? 0.04 : 0.028))}px Arial`;
-  ctx.fillText(ctaInput.value || 'Inquadra il QR code', canvas.width / 2, qrY + qrSize + pad * 0.62);
+  const ctaSize = Math.round(minSide * (isWide ? 0.035 : isSquare ? 0.034 : 0.04));
+  ctx.font = `900 ${ctaSize}px Arial`;
+  ctx.fillText(ctaInput.value || 'Inquadra il QR code', canvas.width / 2, qrY + qrSize + qrPad + ctaSize * 1.05);
 
   ctx.fillStyle = '#64748b';
-  ctx.font = `600 ${Math.round(canvas.height * (isWide ? 0.026 : 0.02))}px Arial`;
-  ctx.fillText(`Valido fino al ${formatDate(campaign.endDate)}`, canvas.width / 2, canvas.height - pad * 0.85);
+  const footerSize = Math.round(minSide * (isWide ? 0.022 : 0.024));
+  ctx.font = `700 ${footerSize}px Arial`;
+  ctx.fillText(`Valido fino al ${formatDate(campaign.endDate)}`, canvas.width / 2, card.y + card.h - pad * 0.45);
 
   playUrlLabel.textContent = playUrl;
 }
