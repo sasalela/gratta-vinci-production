@@ -1,43 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import { createHash } from 'crypto';
-
-// ==========================================
-// IN-MEMORY STORAGE (sostituisci con DB in produzione)
-// ==========================================
-
-const stores: any[] = [
-  {
-    id: '1',
-    name: 'Bar da Giorgio',
-    slug: 'bar-giorgio',
-    email: 'bar@giorgio.it',
-    active: true,
-    createdAt: new Date().toISOString()
-  }
-];
-
-const users: any[] = [];
-const campaigns: any[] = [
-  {
-    id: '1',
-    storeId: '1',
-    name: 'Birra Gratis',
-    slug: 'birra-gratis',
-    description: 'Gratta e vinci una birra gratis!',
-    prizes: [
-      { name: 'Birra Gratis', emoji: '🍺', probability: 50, description: 'Una birra omaggio' },
-      { name: 'Riprova', emoji: '😢', probability: 50, description: 'Riprova la prossima volta' }
-    ],
-    active: true,
-    startDate: '2024-01-01',
-    endDate: '2025-12-31',
-    maxPlaysPerUser: 1,
-    createdAt: new Date().toISOString()
-  }
-];
-const sessions: any[] = [];
-const vouchers: any[] = [];
+import { prisma } from '../lib/db';
 
 // ==========================================
 // SCHEMAS
@@ -89,13 +53,16 @@ const PlaySchema = z.object({
   privacyConsent: z.boolean()
 });
 
+type Prize = {
+  name: string;
+  emoji: string;
+  probability: number;
+  description: string;
+};
+
 // ==========================================
 // UTILITIES
 // ==========================================
-
-function generateId(): string {
-  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
 
 function hashPassword(password: string): string {
   return createHash('sha256').update(password).digest('hex');
@@ -110,17 +77,17 @@ function generateVoucherCode(): string {
   return `${code}-${Date.now().toString(36).toUpperCase()}`;
 }
 
-function selectPrize(prizes: any[]): any {
+function selectPrize(prizes: Prize[]): Prize {
   const random = Math.random() * 100;
   let cumulative = 0;
-  
+
   for (const prize of prizes) {
     cumulative += prize.probability;
     if (random <= cumulative) {
       return prize;
     }
   }
-  
+
   return prizes[prizes.length - 1];
 }
 
@@ -132,18 +99,38 @@ function getAuthToken(req: VercelRequest): string | null {
   return authHeader.substring(7);
 }
 
+function parsePrizes(value: unknown): Prize[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value as Prize[];
+}
+
+function getClientIp(req: VercelRequest): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  if (Array.isArray(forwarded) && forwarded.length > 0) {
+    return forwarded[0];
+  }
+  const realIp = req.headers['x-real-ip'];
+  if (typeof realIp === 'string') {
+    return realIp;
+  }
+  return 'unknown';
+}
+
 // ==========================================
 // MAIN HANDLER
 // ==========================================
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Content-Type', 'application/json');
 
-  // Handle preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -155,37 +142,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     console.log(`[${method}] ${path}`);
 
-    // ==========================================
-    // PUBLIC ROUTES
-    // ==========================================
-
-    // Health Check
     if (path === '/api/health') {
+      await prisma.$queryRaw`SELECT 1`;
       return res.json({
         status: 'ok',
-        version: '2.0.0',
+        version: '2.1.0',
+        database: 'connected',
         timestamp: new Date().toISOString()
       });
     }
 
-    // Login
     if (path === '/api/auth/login' && method === 'POST') {
       const validation = LoginSchema.safeParse(req.body);
-      
+
       if (!validation.success) {
         return res.status(400).json({
           success: false,
           errors: validation.error.errors
         });
       }
-      
+
       const { email, password } = validation.data;
       const hashedPassword = hashPassword(password);
-      
-      // Check super admin
       const adminEmail = process.env.ADMIN_EMAIL || 'admin@grattavinci.it';
       const adminPassword = hashPassword(process.env.ADMIN_PASSWORD || 'admin123');
-      
+
       if (email === adminEmail && hashedPassword === adminPassword) {
         return res.json({
           success: true,
@@ -195,17 +176,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         });
       }
-      
-      // Check database users
-      const user = users.find((u: any) => u.email === email && u.password === hashedPassword);
-      
+
+      const user = await prisma.user.findFirst({
+        where: { email, passwordHash: hashedPassword }
+      });
+
       if (!user) {
         return res.status(401).json({
           success: false,
           error: 'Invalid credentials'
         });
       }
-      
+
       return res.json({
         success: true,
         data: {
@@ -221,121 +203,111 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Play Game
     if (path === '/api/public/play' && method === 'POST') {
       const validation = PlaySchema.safeParse(req.body);
-      
+
       if (!validation.success) {
         return res.status(400).json({
           success: false,
           errors: validation.error.errors
         });
       }
-      
+
       const { storeSlug, campaignSlug, email, privacyConsent } = validation.data;
-      
+
       if (!privacyConsent) {
         return res.status(400).json({
           success: false,
           error: 'Privacy consent required'
         });
       }
-      
-      // Get client IP
-      const clientIp = req.headers['x-forwarded-for'] || 
-                       req.headers['x-real-ip'] || 
-                       'unknown';
-      
-      // Find store
-      const store = stores.find((s: any) => s.slug === storeSlug);
+
+      const clientIp = getClientIp(req);
+
+      const store = await prisma.store.findFirst({
+        where: { slug: storeSlug, active: true }
+      });
+
       if (!store) {
         return res.status(404).json({
           success: false,
           error: 'Store not found'
         });
       }
-      
-      // Find campaign
-      const campaign = campaigns.find((c: any) => 
-        c.storeId === store.id && c.slug === campaignSlug && c.active
-      );
-      
+
+      const campaign = await prisma.campaign.findFirst({
+        where: {
+          storeId: store.id,
+          slug: campaignSlug,
+          active: true
+        }
+      });
+
       if (!campaign) {
         return res.status(404).json({
           success: false,
           error: 'Campaign not found'
         });
       }
-      
-      // Check date range
+
       const now = new Date();
       const startDate = new Date(campaign.startDate);
       const endDate = new Date(campaign.endDate);
-      
+
       if (now < startDate || now > endDate) {
         return res.status(400).json({
           success: false,
           error: 'Campaign not active'
         });
       }
-      
-      // Check previous plays
+
       const sessionKey = `${clientIp}_${campaign.id}`;
-      const previousSessions = sessions.filter((s: any) => s.sessionKey === sessionKey);
-      
-      if (previousSessions.length >= campaign.maxPlaysPerUser) {
+      const previousPlays = await prisma.participation.count({
+        where: { sessionKey, campaignId: campaign.id }
+      });
+
+      if (previousPlays >= campaign.maxPlaysPerUser) {
         return res.status(429).json({
           success: false,
           error: 'Maximum plays reached'
         });
       }
-      
-      // Select prize
-      const selectedPrize = selectPrize(campaign.prizes);
-      
-      // Generate voucher
+
+      const prizes = parsePrizes(campaign.prizes);
+      const selectedPrize = selectPrize(prizes);
       const voucherCode = generateVoucherCode();
-      const sessionId = generateId();
-      const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      
-      // Save session
-      sessions.push({
-        id: sessionId,
-        sessionKey,
-        campaignId: campaign.id,
-        email,
-        clientIp: typeof clientIp === 'string' ? clientIp : clientIp[0],
-        createdAt: now.toISOString()
+      const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      const participation = await prisma.participation.create({
+        data: {
+          sessionKey,
+          campaignId: campaign.id,
+          email,
+          clientIp,
+          voucher: {
+            create: {
+              code: voucherCode,
+              campaignId: campaign.id,
+              storeId: store.id,
+              prize: selectedPrize,
+              email,
+              expiresAt
+            }
+          }
+        },
+        include: { voucher: true }
       });
-      
-      // Save voucher
-      vouchers.push({
-        id: generateId(),
-        code: voucherCode,
-        sessionId,
-        campaignId: campaign.id,
-        storeId: store.id,
-        prize: selectedPrize,
-        email,
-        redeemed: false,
-        expiresAt,
-        createdAt: now.toISOString()
-      });
-      
+
       return res.json({
         success: true,
         data: {
-          sessionId,
+          sessionId: participation.id,
           prize: selectedPrize,
-          voucherCode,
-          expiresAt
+          voucherCode: participation.voucher!.code,
+          expiresAt: participation.voucher!.expiresAt.toISOString()
         }
       });
     }
-
-    // ==========================================
-    // PROTECTED ROUTES
-    // ==========================================
 
     const token = getAuthToken(req);
     if (!token) {
@@ -345,15 +317,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Mock auth - in produzione usa JWT vero
     const isAdmin = token.includes('super-admin');
-    const userId = token.replace('mock-token-', '');
 
-    // Stores
     if (path === '/api/stores' && method === 'GET') {
       if (!isAdmin) {
         return res.status(403).json({ success: false, error: 'Forbidden' });
       }
+      const stores = await prisma.store.findMany({ orderBy: { createdAt: 'desc' } });
       return res.json({ success: true, data: stores });
     }
 
@@ -361,7 +331,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!isAdmin) {
         return res.status(403).json({ success: false, error: 'Forbidden' });
       }
-      
+
       const validation = StoreSchema.safeParse(req.body);
       if (!validation.success) {
         return res.status(400).json({
@@ -369,14 +339,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           errors: validation.error.errors
         });
       }
-      
-      const store = {
-        id: generateId(),
-        ...validation.data,
-        createdAt: new Date().toISOString()
-      };
-      
-      stores.push(store);
+
+      const store = await prisma.store.create({ data: validation.data });
       return res.json({ success: true, data: store });
     }
 
@@ -384,17 +348,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!isAdmin) {
         return res.status(403).json({ success: false, error: 'Forbidden' });
       }
-      
+
       const id = path.split('/').pop();
-      const index = stores.findIndex((s: any) => s.id === id);
-      if (index !== -1) {
-        stores.splice(index, 1);
+      if (id) {
+        await prisma.store.deleteMany({ where: { id } });
       }
       return res.json({ success: true });
     }
 
-    // Users
     if (path === '/api/users' && method === 'GET') {
+      const users = await prisma.user.findMany({
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          storeId: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
       return res.json({ success: true, data: users });
     }
 
@@ -406,31 +379,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           errors: validation.error.errors
         });
       }
-      
-      const hashedPassword = hashPassword(validation.data.password);
-      const user = {
-        id: generateId(),
-        ...validation.data,
-        password: hashedPassword,
-        createdAt: new Date().toISOString()
-      };
-      
-      users.push(user);
-      
-      const { password, ...userWithoutPassword } = user;
-      return res.json({ success: true, data: userWithoutPassword });
+
+      const user = await prisma.user.create({
+        data: {
+          ...validation.data,
+          passwordHash: hashPassword(validation.data.password)
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          storeId: true,
+          createdAt: true
+        }
+      });
+
+      return res.json({ success: true, data: user });
     }
 
-    // Campaigns
     if (path === '/api/campaigns' && method === 'GET') {
       const storeId = url.searchParams.get('storeId');
-      let filteredCampaigns = campaigns;
-      
-      if (storeId) {
-        filteredCampaigns = campaigns.filter((c: any) => c.storeId === storeId);
-      }
-      
-      return res.json({ success: true, data: filteredCampaigns });
+      const campaigns = await prisma.campaign.findMany({
+        where: storeId ? { storeId } : undefined,
+        orderBy: { createdAt: 'desc' }
+      });
+      return res.json({ success: true, data: campaigns });
     }
 
     if (path === '/api/campaigns' && method === 'POST') {
@@ -441,59 +415,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           errors: validation.error.errors
         });
       }
-      
-      const campaign = {
-        id: generateId(),
-        ...validation.data,
-        createdAt: new Date().toISOString()
-      };
-      
-      campaigns.push(campaign);
+
+      const { startDate, endDate, ...rest } = validation.data;
+      const campaign = await prisma.campaign.create({
+        data: {
+          ...rest,
+          startDate: new Date(startDate),
+          endDate: new Date(endDate)
+        }
+      });
       return res.json({ success: true, data: campaign });
     }
 
     if (path.startsWith('/api/campaigns/') && method === 'DELETE') {
       const id = path.split('/').pop();
-      const index = campaigns.findIndex((c: any) => c.id === id);
-      if (index !== -1) {
-        campaigns.splice(index, 1);
+      if (id) {
+        await prisma.campaign.deleteMany({ where: { id } });
       }
       return res.json({ success: true });
     }
 
-    // Stats
     if (path.startsWith('/api/stats/')) {
       const storeId = path.split('/').pop();
-      const storeSessions = sessions.filter((s: any) => {
-        const campaign = campaigns.find((c: any) => c.id === s.campaignId);
-        return campaign && campaign.storeId === storeId;
+      if (!storeId) {
+        return res.status(400).json({ success: false, error: 'Store id required' });
+      }
+
+      const storeCampaigns = await prisma.campaign.findMany({
+        where: { storeId },
+        select: { id: true }
       });
-      
-      const storeVouchers = vouchers.filter((v: any) => v.storeId === storeId);
-      
+      const campaignIds = storeCampaigns.map((c) => c.id);
+
+      const [totalPlays, totalVouchers, redeemedVouchers] = await Promise.all([
+        prisma.participation.count({ where: { campaignId: { in: campaignIds } } }),
+        prisma.voucher.count({ where: { storeId } }),
+        prisma.voucher.count({ where: { storeId, redeemed: true } })
+      ]);
+
       return res.json({
         success: true,
         data: {
-          totalPlays: storeSessions.length,
-          totalVouchers: storeVouchers.length,
-          redeemedVouchers: storeVouchers.filter((v: any) => v.redeemed).length,
-          pendingVouchers: storeVouchers.filter((v: any) => !v.redeemed).length
+          totalPlays,
+          totalVouchers,
+          redeemedVouchers,
+          pendingVouchers: totalVouchers - redeemedVouchers
         }
       });
     }
 
-    // 404
     return res.status(404).json({
       success: false,
       error: 'Not found'
     });
-
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('API Error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
-      message: error.message
+      message
     });
   }
 }

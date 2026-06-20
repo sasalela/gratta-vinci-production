@@ -13,6 +13,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 20px;
 }
 
 .container {
@@ -22,13 +23,71 @@ body {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   text-align: center;
   max-width: 500px;
-  width: 90%;
+  width: 100%;
 }
 
 h1 {
   color: #333;
+  margin-bottom: 12px;
+  font-size: 2.2em;
+}
+
+#subtitle {
+  color: #666;
   margin-bottom: 20px;
-  font-size: 2.5em;
+}
+
+.card {
+  margin-top: 16px;
+  padding-top: 8px;
+}
+
+.card h2 {
+  color: #444;
+  margin-bottom: 16px;
+}
+
+.campaign-info {
+  color: #666;
+  font-size: 0.95em;
+  margin-bottom: 16px;
+}
+
+label {
+  display: block;
+  text-align: left;
+  margin-bottom: 6px;
+  color: #444;
+  font-weight: bold;
+}
+
+input[type="email"] {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  font-size: 1em;
+}
+
+input[type="email"]:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  font-weight: normal;
+  margin-bottom: 16px;
+  color: #555;
+  cursor: pointer;
+}
+
+.checkbox-label input {
+  margin-top: 3px;
 }
 
 canvas {
@@ -38,6 +97,8 @@ canvas {
   margin: 20px auto;
   cursor: pointer;
   background: #f5f5f5;
+  touch-action: none;
+  max-width: 100%;
 }
 
 button {
@@ -46,14 +107,56 @@ button {
   border: none;
   padding: 12px 30px;
   border-radius: 25px;
-  font-size: 1.1em;
+  font-size: 1.05em;
   cursor: pointer;
-  margin-top: 20px;
+  margin-top: 12px;
   transition: all 0.3s ease;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   background: #764ba2;
   transform: translateY(-2px);
   box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.message {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.95em;
+}
+
+.message.error {
+  background: #fdecea;
+  color: #c0392b;
+  border: 1px solid #f5c6cb;
+}
+
+.result {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 10px;
+  line-height: 1.6;
+}
+
+.result.winner {
+  background: #e8f8ef;
+  color: #1e7e34;
+  border: 1px solid #b7e4c7;
+}
+
+.result code {
+  background: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.hidden {
+  display: none;
 }

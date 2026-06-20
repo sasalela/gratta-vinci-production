@@ -1,16 +1,27 @@
 {
   "name": "gratta-vinci-production",
-  "version": "2.0.0",
-  "description": "Sistema completo multi-tenant per gestione campagne Gratta & Vinci",
+  "version": "2.1.0",
+  "description": "Sistema multi-tenant per campagne Gratta & Vinci",
   "scripts": {
     "dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@vercel/node": "^3.0.0",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.4.5"
   }
 }
