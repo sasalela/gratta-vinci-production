@@ -112,7 +112,11 @@ async function api(path, options = {}) {
     const validation = Array.isArray(payload.errors)
       ? payload.errors.map((error) => error.message || error).join(', ')
       : '';
-    throw new Error(validation || payload.message || payload.error || `Errore API (${response.status})`);
+    const rawMessage = validation || payload.message || payload.error || `Errore API (${response.status})`;
+    if (rawMessage.includes('Unique constraint failed') || rawMessage.includes('storeId') && rawMessage.includes('slug')) {
+      throw new Error('Esiste già una campagna con questo slug. Cambia il nome o lo slug link.');
+    }
+    throw new Error(rawMessage);
   }
   return payload.data;
 }
@@ -314,15 +318,15 @@ function renderAlerts(rows) {
 function resetCampaignForm() {
   state.editingCampaignId = null;
   editorTitle.textContent = 'Nuova campagna';
-  editorSubtitle.textContent = 'Compila i parametri principali e salva. Dopo il salvataggio potrai aggiungere i premi.';
+  editorSubtitle.textContent = 'Compila campagna e primo premio: verranno salvati insieme.';
   campaignForm.reset();
   document.getElementById('campaignActive').checked = true;
   document.getElementById('voucherValidityDays').value = 15;
   document.getElementById('loseMessage').value = 'Nessun premio questa volta.';
   document.querySelector('[data-field="name"]').checked = true;
   document.querySelector('[data-field="email"]').checked = true;
-  prizeList.innerHTML = '<p class="muted">Salva la campagna per aggiungere premi.</p>';
-  prizeForm.classList.add('disabled-block');
+  prizeList.innerHTML = '<p class="muted">Inserisci qui sotto il primo premio della nuova campagna.</p>';
+  prizeForm.classList.remove('disabled-block');
 }
 
 function editCampaign(campaignId) {
@@ -375,6 +379,21 @@ async function saveCampaign(event) {
     if (!name || !slug) {
       throw new Error('Inserisci nome campagna e slug.');
     }
+    if (!document.getElementById('startDate').value || !document.getElementById('endDate').value) {
+      throw new Error('Inserisci data inizio e data fine campagna.');
+    }
+
+    const duplicate = state.campaigns.find((item) => (
+      item.slug === slug && item.id !== state.editingCampaignId
+    ));
+    if (duplicate) {
+      throw new Error('Esiste già una campagna con questo slug. Cambia il nome o lo slug link.');
+    }
+
+    const wasCreating = !state.editingCampaignId;
+    if (wasCreating) {
+      validatePrizeDraft();
+    }
 
     const campaign = {
       name,
@@ -398,13 +417,51 @@ async function saveCampaign(event) {
       method: state.editingCampaignId ? 'PUT' : 'POST',
       body: JSON.stringify(campaign)
     });
+
+    if (wasCreating && getPrizeDraft().name) {
+      await savePrizeForCampaign(saved.id);
+    }
+
     await loadAll();
     state.editingCampaignId = saved.id;
     editCampaign(saved.id);
-    showSuccess('Campagna salvata correttamente.');
+    showSuccess(wasCreating ? 'Campagna e premio salvati correttamente.' : 'Campagna salvata correttamente.');
   } catch (error) {
     setError(appError, error.message);
   }
+}
+
+function getPrizeDraft() {
+  return {
+    name: document.getElementById('prizeName').value.trim(),
+    emoji: document.getElementById('prizeEmoji').value.trim(),
+    description: document.getElementById('prizeDescription').value.trim(),
+    totalQuantity: Number(document.getElementById('prizeQuantity').value || 0),
+    winProbability: Number(document.getElementById('prizeProbability').value || 0),
+    active: true
+  };
+}
+
+function validatePrizeDraft() {
+  const prize = getPrizeDraft();
+  if (!prize.name) {
+    throw new Error('Inserisci il nome del premio.');
+  }
+  if (prize.totalQuantity < 1) {
+    throw new Error('La quantità premi deve essere almeno 1.');
+  }
+  if (prize.winProbability <= 0 || prize.winProbability > 100) {
+    throw new Error('La percentuale di vincita deve essere tra 1 e 100.');
+  }
+  return prize;
+}
+
+async function savePrizeForCampaign(campaignId) {
+  const prize = validatePrizeDraft();
+  return api(`/api/store/campaigns/${campaignId}/prizes`, {
+    method: 'POST',
+    body: JSON.stringify(prize)
+  });
 }
 
 async function createPrize() {
@@ -412,20 +469,10 @@ async function createPrize() {
   try {
     const campaignId = state.editingCampaignId;
     if (!campaignId) {
-      throw new Error('Salva o seleziona una campagna prima di aggiungere premi.');
+      throw new Error('Per una nuova campagna compila il premio e poi clicca “Salva campagna”.');
     }
 
-    await api(`/api/store/campaigns/${campaignId}/prizes`, {
-      method: 'POST',
-      body: JSON.stringify({
-        name: document.getElementById('prizeName').value.trim(),
-        emoji: document.getElementById('prizeEmoji').value.trim(),
-        description: document.getElementById('prizeDescription').value.trim(),
-        totalQuantity: Number(document.getElementById('prizeQuantity').value || 0),
-        winProbability: Number(document.getElementById('prizeProbability').value || 0),
-        active: true
-      })
-    });
+    await savePrizeForCampaign(campaignId);
     await loadAll();
     editCampaign(campaignId);
     document.getElementById('prizeName').value = '';

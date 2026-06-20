@@ -668,6 +668,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         const { startDate, endDate, ...data } = validation.data;
+        const existingCampaign = await prisma.campaign.findFirst({
+          where: { storeId, slug: data.slug }
+        });
+
+        if (existingCampaign) {
+          return res.status(409).json({
+            success: false,
+            error: 'Esiste già una campagna con questo slug. Cambia il nome o lo slug link.'
+          });
+        }
+
         const campaign = await prisma.campaign.create({
           data: {
             ...data,
@@ -692,6 +703,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           const { startDate, endDate, ...data } = validation.data;
+          const existingCampaign = await prisma.campaign.findFirst({
+            where: {
+              storeId,
+              slug: data.slug,
+              NOT: { id: campaignId }
+            }
+          });
+
+          if (existingCampaign) {
+            return res.status(409).json({
+              success: false,
+              error: 'Esiste già un’altra campagna con questo slug. Scegli uno slug diverso.'
+            });
+          }
+
           await prisma.campaign.updateMany({
             where: { id: campaignId, storeId },
             data: {
