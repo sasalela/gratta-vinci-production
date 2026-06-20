@@ -12,10 +12,14 @@ const logoutBtn = document.getElementById('logoutBtn');
 const storeName = document.getElementById('storeName');
 const userLabel = document.getElementById('userLabel');
 const appError = document.getElementById('appError');
-const createCampaignBtn = document.getElementById('createCampaignBtn');
+const appSuccess = document.getElementById('appSuccess');
+const campaignForm = document.getElementById('campaignForm');
+const saveCampaignBtn = document.getElementById('saveCampaignBtn');
 const createPrizeBtn = document.getElementById('createPrizeBtn');
-const prizeCampaign = document.getElementById('prizeCampaign');
-const campaignsTable = document.getElementById('campaignsTable');
+const newCampaignBtn = document.getElementById('newCampaignBtn');
+const cancelEditBtn = document.getElementById('cancelEditBtn');
+const cancelEditBtnBottom = document.getElementById('cancelEditBtnBottom');
+const campaignCards = document.getElementById('campaignCards');
 const participationsTable = document.getElementById('participationsTable');
 const vouchersTable = document.getElementById('vouchersTable');
 const alertsList = document.getElementById('alertsList');
@@ -23,6 +27,23 @@ const voucherCode = document.getElementById('voucherCode');
 const validateVoucherBtn = document.getElementById('validateVoucherBtn');
 const redeemVoucherBtn = document.getElementById('redeemVoucherBtn');
 const voucherResult = document.getElementById('voucherResult');
+const editorTitle = document.getElementById('editorTitle');
+const editorSubtitle = document.getElementById('editorSubtitle');
+const prizeList = document.getElementById('prizeList');
+const prizeForm = document.getElementById('prizeForm');
+const statActiveCampaigns = document.getElementById('statActiveCampaigns');
+const statParticipations = document.getElementById('statParticipations');
+const statOpenVouchers = document.getElementById('statOpenVouchers');
+const statRedeemedVouchers = document.getElementById('statRedeemedVouchers');
+
+const state = {
+  campaigns: [],
+  participations: [],
+  vouchers: [],
+  alerts: [],
+  editingCampaignId: null,
+  store: null
+};
 
 function show(el) {
   el.classList.remove('hidden');
@@ -43,6 +64,20 @@ function escapeHtml(value) {
 function formatDate(value) {
   if (!value) return '-';
   return new Date(value).toLocaleString('it-IT');
+}
+
+function formatDateOnly(value) {
+  if (!value) return '';
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function getToken() {
@@ -70,7 +105,14 @@ async function api(path, options = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload.success) {
-    throw new Error(payload.error || 'Errore API');
+    if (response.status === 401 || response.status === 403) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(USER_KEY);
+    }
+    const validation = Array.isArray(payload.errors)
+      ? payload.errors.map((error) => error.message || error).join(', ')
+      : '';
+    throw new Error(validation || payload.message || payload.error || `Errore API (${response.status})`);
   }
   return payload.data;
 }
@@ -107,6 +149,20 @@ function getCustomerFields() {
       enabled: true,
       required: ['name', 'email'].includes(input.dataset.field)
     }));
+}
+
+function showSuccess(message) {
+  appSuccess.textContent = message;
+  show(appSuccess);
+  setTimeout(() => hide(appSuccess), 3500);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach((panel) => hide(panel));
+  show(document.getElementById(`tab${name[0].toUpperCase()}${name.slice(1)}`));
 }
 
 async function login() {
@@ -157,8 +213,15 @@ async function loadAll() {
       api('/api/store/alerts')
     ]);
 
+    state.store = me.store;
+    state.campaigns = campaigns;
+    state.participations = participations;
+    state.vouchers = vouchers;
+    state.alerts = alerts;
+
     storeName.textContent = me.store?.name || 'Negozio';
     userLabel.textContent = ` — ${me.user.email}`;
+    renderStats();
     renderCampaigns(campaigns);
     renderParticipations(participations);
     renderVouchers(vouchers);
@@ -168,21 +231,52 @@ async function loadAll() {
   }
 }
 
-function renderCampaigns(campaigns) {
-  prizeCampaign.innerHTML = campaigns
-    .map((campaign) => `<option value="${escapeHtml(campaign.id)}">${escapeHtml(campaign.name)}</option>`)
-    .join('');
+function renderStats() {
+  statActiveCampaigns.textContent = state.campaigns.filter((campaign) => campaign.active).length;
+  statParticipations.textContent = state.participations.length;
+  statOpenVouchers.textContent = state.vouchers.filter((voucher) => !voucher.redeemed).length;
+  statRedeemedVouchers.textContent = state.vouchers.filter((voucher) => voucher.redeemed).length;
+}
 
-  renderTable(campaignsTable, [
-    { label: 'Nome', render: (row) => row.name },
-    { label: 'Slug', render: (row) => row.slug },
-    { label: 'Periodo', render: (row) => `${formatDate(row.startDate)} - ${formatDate(row.endDate)}` },
-    { label: 'Limite', render: (row) => row.playLimitMode === 'per_day' ? 'Giornaliero' : 'Per campagna' },
-    { label: 'Premi', html: true, render: (row) => row.prizeItems.map((prize) => `<span class="pill">${escapeHtml(prize.emoji || '')} ${escapeHtml(prize.name)}: ${prize.remainingQuantity}/${prize.totalQuantity} (${prize.winProbability}%)</span>`).join('') || '-' },
-    { label: 'Giocate', render: (row) => row._count?.participations ?? 0 },
-    { label: 'Voucher', render: (row) => row._count?.vouchers ?? 0 },
-    { label: 'Attiva', render: (row) => row.active ? 'Si' : 'No' }
-  ], campaigns);
+function renderCampaigns(campaigns) {
+  if (!campaigns.length) {
+    campaignCards.innerHTML = '<div class="empty-state">Non hai ancora campagne. Clicca su “Nuova campagna” per crearne una.</div>';
+    return;
+  }
+
+  campaignCards.innerHTML = campaigns.map((campaign) => {
+    const playUrl = `${window.location.origin}/?store=${state.store?.slug || 'negozio'}&campaign=${campaign.slug}`;
+    const prizes = campaign.prizeItems.map((prize) => (
+      `<span class="pill">${escapeHtml(prize.emoji || '')} ${escapeHtml(prize.name)} ${prize.remainingQuantity}/${prize.totalQuantity} · ${prize.winProbability}%</span>`
+    )).join('') || '<span class="muted">Nessun premio inserito</span>';
+    return `
+      <article class="campaign-card">
+        <div class="campaign-card-head">
+          <div>
+            <span class="status ${campaign.active ? 'active' : 'inactive'}">${campaign.active ? 'Attiva' : 'Non attiva'}</span>
+            <h3>${escapeHtml(campaign.name)}</h3>
+            <p class="muted">${escapeHtml(campaign.description || 'Nessuna descrizione')}</p>
+          </div>
+          <button type="button" class="secondary small" data-edit-campaign="${escapeHtml(campaign.id)}">Modifica</button>
+        </div>
+        <div class="campaign-meta">
+          <span>Periodo: ${formatDate(campaign.startDate)} - ${formatDate(campaign.endDate)}</span>
+          <span>Limite: ${campaign.playLimitMode === 'per_day' ? '1 volta al giorno' : '1 volta per campagna'}</span>
+          <span>Giocate: ${campaign._count?.participations ?? 0}</span>
+          <span>Voucher: ${campaign._count?.vouchers ?? 0}</span>
+        </div>
+        <div class="prize-list compact">${prizes}</div>
+        <div class="play-link">
+          <input readonly value="${escapeHtml(playUrl)}">
+          <a href="${escapeHtml(playUrl)}" target="_blank" rel="noreferrer">Apri gioco</a>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  campaignCards.querySelectorAll('[data-edit-campaign]').forEach((button) => {
+    button.addEventListener('click', () => editCampaign(button.dataset.editCampaign));
+  });
 }
 
 function renderParticipations(rows) {
@@ -209,20 +303,82 @@ function renderVouchers(rows) {
 
 function renderAlerts(rows) {
   if (!rows.length) {
-    alertsList.innerHTML = '<p>Nessun alert.</p>';
+    alertsList.innerHTML = '';
     return;
   }
   alertsList.innerHTML = rows.map((alert) => (
-    `<div class="message ${alert.readByStore ? '' : 'error'}">${escapeHtml(alert.message)}<br><small>${formatDate(alert.createdAt)}</small></div>`
+    `<div class="alert ${alert.readByStore ? '' : 'unread'}">${escapeHtml(alert.message)} <small>${formatDate(alert.createdAt)}</small></div>`
   )).join('');
 }
 
-async function createCampaign() {
+function resetCampaignForm() {
+  state.editingCampaignId = null;
+  editorTitle.textContent = 'Nuova campagna';
+  editorSubtitle.textContent = 'Compila i parametri principali e salva. Dopo il salvataggio potrai aggiungere i premi.';
+  campaignForm.reset();
+  document.getElementById('campaignActive').checked = true;
+  document.getElementById('voucherValidityDays').value = 15;
+  document.getElementById('loseMessage').value = 'Nessun premio questa volta.';
+  document.querySelector('[data-field="name"]').checked = true;
+  document.querySelector('[data-field="email"]').checked = true;
+  prizeList.innerHTML = '<p class="muted">Salva la campagna per aggiungere premi.</p>';
+  prizeForm.classList.add('disabled-block');
+}
+
+function editCampaign(campaignId) {
+  const campaign = state.campaigns.find((item) => item.id === campaignId);
+  if (!campaign) return;
+
+  state.editingCampaignId = campaign.id;
+  editorTitle.textContent = `Modifica: ${campaign.name}`;
+  editorSubtitle.textContent = 'Aggiorna parametri, stato attivo e premi della campagna.';
+  document.getElementById('campaignName').value = campaign.name || '';
+  document.getElementById('campaignSlug').value = campaign.slug || '';
+  document.getElementById('campaignDescription').value = campaign.description || '';
+  document.getElementById('startDate').value = formatDateOnly(campaign.startDate);
+  document.getElementById('endDate').value = formatDateOnly(campaign.endDate);
+  document.getElementById('playLimitMode').value = campaign.playLimitMode || 'per_campaign';
+  document.getElementById('voucherValidityDays').value = campaign.voucherValidityDays || 15;
+  document.getElementById('loseMessage').value = campaign.loseMessage || 'Nessun premio questa volta.';
+  document.getElementById('campaignActive').checked = campaign.active;
+
+  document.querySelectorAll('[data-field]').forEach((input) => {
+    const field = (campaign.customerFields || []).find((item) => item.key === input.dataset.field);
+    input.checked = Boolean(field?.enabled) || ['name', 'email'].includes(input.dataset.field);
+  });
+
+  renderPrizeEditor(campaign);
+  switchTab('editor');
+}
+
+function renderPrizeEditor(campaign) {
+  prizeForm.classList.remove('disabled-block');
+  if (!campaign.prizeItems.length) {
+    prizeList.innerHTML = '<p class="muted">Nessun premio inserito. Aggiungi almeno un premio per poter assegnare voucher.</p>';
+    return;
+  }
+  prizeList.innerHTML = campaign.prizeItems.map((prize) => (
+    `<div class="prize-row">
+      <strong>${escapeHtml(prize.emoji || '')} ${escapeHtml(prize.name)}</strong>
+      <span>${prize.remainingQuantity}/${prize.totalQuantity} disponibili</span>
+      <span>${prize.winProbability}% vincita</span>
+    </div>`
+  )).join('');
+}
+
+async function saveCampaign(event) {
+  event.preventDefault();
   clearError(appError);
   try {
+    const name = document.getElementById('campaignName').value.trim();
+    const slug = document.getElementById('campaignSlug').value.trim() || slugify(name);
+    if (!name || !slug) {
+      throw new Error('Inserisci nome campagna e slug.');
+    }
+
     const campaign = {
-      name: document.getElementById('campaignName').value.trim(),
-      slug: document.getElementById('campaignSlug').value.trim(),
+      name,
+      slug,
       description: document.getElementById('campaignDescription').value.trim(),
       startDate: document.getElementById('startDate').value,
       endDate: document.getElementById('endDate').value,
@@ -230,15 +386,22 @@ async function createCampaign() {
       voucherValidityDays: Number(document.getElementById('voucherValidityDays').value || 15),
       loseMessage: document.getElementById('loseMessage').value.trim() || 'Nessun premio questa volta.',
       gameType: 'scratch_card',
-      active: true,
+      active: document.getElementById('campaignActive').checked,
       customerFields: getCustomerFields()
     };
 
-    await api('/api/store/campaigns', {
-      method: 'POST',
+    const path = state.editingCampaignId
+      ? `/api/store/campaigns/${state.editingCampaignId}`
+      : '/api/store/campaigns';
+
+    const saved = await api(path, {
+      method: state.editingCampaignId ? 'PUT' : 'POST',
       body: JSON.stringify(campaign)
     });
     await loadAll();
+    state.editingCampaignId = saved.id;
+    editCampaign(saved.id);
+    showSuccess('Campagna salvata correttamente.');
   } catch (error) {
     setError(appError, error.message);
   }
@@ -247,9 +410,9 @@ async function createCampaign() {
 async function createPrize() {
   clearError(appError);
   try {
-    const campaignId = prizeCampaign.value;
+    const campaignId = state.editingCampaignId;
     if (!campaignId) {
-      throw new Error('Seleziona una campagna.');
+      throw new Error('Salva o seleziona una campagna prima di aggiungere premi.');
     }
 
     await api(`/api/store/campaigns/${campaignId}/prizes`, {
@@ -264,6 +427,11 @@ async function createPrize() {
       })
     });
     await loadAll();
+    editCampaign(campaignId);
+    document.getElementById('prizeName').value = '';
+    document.getElementById('prizeEmoji').value = '';
+    document.getElementById('prizeDescription').value = '';
+    showSuccess('Premio aggiunto correttamente.');
   } catch (error) {
     setError(appError, error.message);
   }
@@ -303,13 +471,32 @@ function logout() {
   hide(appSection);
 }
 
+function newCampaign() {
+  resetCampaignForm();
+  switchTab('editor');
+}
+
 loginBtn.addEventListener('click', login);
 refreshBtn.addEventListener('click', loadAll);
 logoutBtn.addEventListener('click', logout);
-createCampaignBtn.addEventListener('click', createCampaign);
+newCampaignBtn.addEventListener('click', newCampaign);
+campaignForm.addEventListener('submit', saveCampaign);
 createPrizeBtn.addEventListener('click', createPrize);
 validateVoucherBtn.addEventListener('click', validateVoucher);
 redeemVoucherBtn.addEventListener('click', redeemVoucher);
+cancelEditBtn.addEventListener('click', () => switchTab('campaigns'));
+cancelEditBtnBottom.addEventListener('click', () => switchTab('campaigns'));
+document.getElementById('campaignName').addEventListener('input', (event) => {
+  if (!state.editingCampaignId) {
+    document.getElementById('campaignSlug').value = slugify(event.target.value);
+  }
+});
+
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+resetCampaignForm();
 
 if (getToken()) {
   showApp();

@@ -7,115 +7,227 @@
   <link rel="stylesheet" href="store.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Pannello Negozio</h1>
-    <p class="subtitle">Gestione campagne, premi, giocate e voucher.</p>
-
-    <section id="loginSection" class="card">
-      <h2>Accesso negozio</h2>
-      <label for="email">Email</label>
-      <input id="email" type="email" autocomplete="username">
-      <label for="password">Password</label>
-      <input id="password" type="password" autocomplete="current-password">
-      <div id="loginError" class="message error hidden"></div>
-      <button id="loginBtn" type="button">Accedi</button>
+  <main class="page">
+    <section id="loginSection" class="login-card">
+      <div class="login-copy">
+        <p class="eyebrow">Area negozio</p>
+        <h1>Gestisci le tue campagne promozionali</h1>
+        <p>Accedi per creare campagne, controllare premi, validare voucher e vedere le giocate.</p>
+      </div>
+      <div class="card login-box">
+        <h2>Accesso</h2>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" placeholder="bar@giorgio.it">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="password">
+        <div id="loginError" class="message error hidden"></div>
+        <button id="loginBtn" type="button" class="primary full">Accedi</button>
+      </div>
     </section>
 
-    <section id="appSection" class="hidden">
-      <div class="toolbar">
+    <section id="appSection" class="app-shell hidden">
+      <header class="topbar">
         <div>
-          <strong id="storeName"></strong>
-          <span id="userLabel"></span>
+          <p class="eyebrow">Pannello negozio</p>
+          <h1 id="storeName">Negozio</h1>
+          <p id="userLabel" class="muted"></p>
         </div>
-        <div>
-          <button id="refreshBtn" type="button">Aggiorna</button>
-          <button id="logoutBtn" type="button" class="secondary">Esci</button>
+        <div class="topbar-actions">
+          <button id="refreshBtn" type="button" class="secondary">Aggiorna</button>
+          <button id="logoutBtn" type="button" class="ghost">Esci</button>
         </div>
-      </div>
+      </header>
+
       <div id="appError" class="message error hidden"></div>
+      <div id="appSuccess" class="message success hidden"></div>
 
-      <div class="grid">
-        <section class="card">
-          <h2>Crea campagna</h2>
-          <label>Nome</label>
-          <input id="campaignName" type="text" placeholder="Birra gratis">
-          <label>Slug</label>
-          <input id="campaignSlug" type="text" placeholder="birra-gratis">
-          <label>Descrizione</label>
-          <textarea id="campaignDescription" rows="3"></textarea>
-          <label>Data inizio</label>
-          <input id="startDate" type="date">
-          <label>Data fine</label>
-          <input id="endDate" type="date">
-          <label>Limite gioco</label>
-          <select id="playLimitMode">
-            <option value="per_campaign">Una volta per campagna</option>
-            <option value="per_day">Una volta al giorno</option>
-          </select>
-          <label>Scadenza voucher (giorni)</label>
-          <input id="voucherValidityDays" type="number" min="1" value="15">
-          <label>Messaggio perdita</label>
-          <input id="loseMessage" type="text" value="Nessun premio questa volta.">
-          <fieldset>
-            <legend>Dati richiesti al giocatore</legend>
-            <label><input type="checkbox" data-field="name" checked> Nome obbligatorio</label>
-            <label><input type="checkbox" data-field="email" checked> Email obbligatoria</label>
-            <label><input type="checkbox" data-field="phone"> Telefono</label>
-            <label><input type="checkbox" data-field="birthDate"> Data nascita</label>
-            <label><input type="checkbox" data-field="marketingConsent"> Consenso marketing</label>
-          </fieldset>
-          <button id="createCampaignBtn" type="button">Crea campagna</button>
-        </section>
+      <div id="alertsList" class="alerts"></div>
 
-        <section class="card">
-          <h2>Aggiungi premio</h2>
-          <label>Campagna</label>
-          <select id="prizeCampaign"></select>
-          <label>Nome premio</label>
-          <input id="prizeName" type="text" placeholder="Birra gratis">
-          <label>Emoji</label>
-          <input id="prizeEmoji" type="text" placeholder="🍺">
-          <label>Descrizione</label>
-          <input id="prizeDescription" type="text">
-          <label>Quantità disponibili</label>
-          <input id="prizeQuantity" type="number" min="0" value="10">
-          <label>Percentuale vincita</label>
-          <input id="prizeProbability" type="number" min="0" max="100" value="10">
-          <button id="createPrizeBtn" type="button">Aggiungi premio</button>
-        </section>
-      </div>
-
-      <section class="card">
-        <h2>Alert</h2>
-        <div id="alertsList"></div>
+      <section class="stats-grid">
+        <article class="stat-card">
+          <span>Campagne attive</span>
+          <strong id="statActiveCampaigns">0</strong>
+        </article>
+        <article class="stat-card">
+          <span>Giocate</span>
+          <strong id="statParticipations">0</strong>
+        </article>
+        <article class="stat-card">
+          <span>Voucher aperti</span>
+          <strong id="statOpenVouchers">0</strong>
+        </article>
+        <article class="stat-card">
+          <span>Voucher riscattati</span>
+          <strong id="statRedeemedVouchers">0</strong>
+        </article>
       </section>
 
-      <section class="card">
-        <h2>Campagne</h2>
-        <div id="campaignsTable" class="table-wrap"></div>
-      </section>
+      <nav class="tabs" aria-label="Sezioni pannello negozio">
+        <button class="tab active" data-tab="campaigns">Campagne</button>
+        <button class="tab" data-tab="editor">Crea / modifica</button>
+        <button class="tab" data-tab="vouchers">Voucher</button>
+        <button class="tab" data-tab="players">Giocatori</button>
+      </nav>
 
-      <section class="card">
-        <h2>Valida voucher</h2>
-        <div class="inline-form">
-          <input id="voucherCode" type="text" placeholder="Codice voucher">
-          <button id="validateVoucherBtn" type="button">Verifica</button>
-          <button id="redeemVoucherBtn" type="button">Riscatta</button>
+      <section id="tabCampaigns" class="tab-panel">
+        <div class="section-heading">
+          <div>
+            <h2>Campagne</h2>
+            <p class="muted">Vedi subito quali campagne sono attive e modifica i parametri.</p>
+          </div>
+          <button id="newCampaignBtn" type="button" class="primary">Nuova campagna</button>
         </div>
-        <div id="voucherResult"></div>
+        <div id="campaignCards" class="campaign-grid"></div>
       </section>
 
-      <section class="card">
-        <h2>Partecipazioni</h2>
-        <div id="participationsTable" class="table-wrap"></div>
+      <section id="tabEditor" class="tab-panel hidden">
+        <div class="section-heading">
+          <div>
+            <h2 id="editorTitle">Nuova campagna</h2>
+            <p id="editorSubtitle" class="muted">Compila i parametri principali e salva. Dopo il salvataggio potrai aggiungere i premi.</p>
+          </div>
+          <button id="cancelEditBtn" type="button" class="ghost">Torna alle campagne</button>
+        </div>
+
+        <form id="campaignForm" class="editor-grid">
+          <section class="card form-section">
+            <h3>1. Informazioni campagna</h3>
+            <div class="form-row two">
+              <div>
+                <label for="campaignName">Nome campagna</label>
+                <input id="campaignName" type="text" placeholder="Birra gratis">
+              </div>
+              <div>
+                <label for="campaignSlug">Slug link</label>
+                <input id="campaignSlug" type="text" placeholder="birra-gratis">
+              </div>
+            </div>
+            <label for="campaignDescription">Descrizione</label>
+            <textarea id="campaignDescription" rows="3" placeholder="Descrivi cosa può vincere il cliente"></textarea>
+            <div class="form-row two">
+              <div>
+                <label for="startDate">Data inizio</label>
+                <input id="startDate" type="date">
+              </div>
+              <div>
+                <label for="endDate">Data fine</label>
+                <input id="endDate" type="date">
+              </div>
+            </div>
+            <label class="switch-row">
+              <input id="campaignActive" type="checkbox" checked>
+              Campagna attiva
+            </label>
+          </section>
+
+          <section class="card form-section">
+            <h3>2. Regole di gioco</h3>
+            <div class="form-row two">
+              <div>
+                <label for="playLimitMode">Limite partecipazione</label>
+                <select id="playLimitMode">
+                  <option value="per_campaign">Una volta per campagna</option>
+                  <option value="per_day">Una volta al giorno</option>
+                </select>
+              </div>
+              <div>
+                <label for="voucherValidityDays">Scadenza voucher</label>
+                <input id="voucherValidityDays" type="number" min="1" value="15">
+                <small>Giorni validità dopo la vincita</small>
+              </div>
+            </div>
+            <label for="loseMessage">Messaggio se non vince</label>
+            <input id="loseMessage" type="text" value="Nessun premio questa volta.">
+          </section>
+
+          <section class="card form-section">
+            <h3>3. Dati richiesti al giocatore</h3>
+            <p class="muted">Nome ed email restano obbligatori. Puoi aggiungere altri dati alla form del gioco.</p>
+            <div class="checkbox-grid">
+              <label><input type="checkbox" data-field="name" checked disabled> Nome obbligatorio</label>
+              <label><input type="checkbox" data-field="email" checked disabled> Email obbligatoria</label>
+              <label><input type="checkbox" data-field="phone"> Telefono</label>
+              <label><input type="checkbox" data-field="birthDate"> Data nascita</label>
+              <label><input type="checkbox" data-field="marketingConsent"> Consenso marketing</label>
+            </div>
+          </section>
+
+          <section class="card form-section prize-section">
+            <div class="section-heading compact">
+              <div>
+                <h3>4. Premi</h3>
+                <p class="muted">Aggiungi i premi dopo avere salvato la campagna.</p>
+              </div>
+            </div>
+            <div id="prizeList" class="prize-list"></div>
+            <div id="prizeForm" class="prize-form">
+              <div class="form-row two">
+                <div>
+                  <label for="prizeName">Nome premio</label>
+                  <input id="prizeName" type="text" placeholder="Birra gratis">
+                </div>
+                <div>
+                  <label for="prizeEmoji">Emoji</label>
+                  <input id="prizeEmoji" type="text" placeholder="🍺">
+                </div>
+              </div>
+              <label for="prizeDescription">Descrizione premio</label>
+              <input id="prizeDescription" type="text">
+              <div class="form-row two">
+                <div>
+                  <label for="prizeQuantity">Quantità totale</label>
+                  <input id="prizeQuantity" type="number" min="0" value="10">
+                </div>
+                <div>
+                  <label for="prizeProbability">Percentuale vincita</label>
+                  <input id="prizeProbability" type="number" min="0" max="100" value="10">
+                </div>
+              </div>
+              <button id="createPrizeBtn" type="button" class="secondary">Aggiungi premio</button>
+            </div>
+          </section>
+
+          <div class="form-actions">
+            <button id="saveCampaignBtn" type="submit" class="primary">Salva campagna</button>
+            <button id="cancelEditBtnBottom" type="button" class="ghost">Annulla</button>
+          </div>
+        </form>
       </section>
 
-      <section class="card">
-        <h2>Voucher</h2>
-        <div id="vouchersTable" class="table-wrap"></div>
+      <section id="tabVouchers" class="tab-panel hidden">
+        <div class="section-heading">
+          <div>
+            <h2>Validazione voucher</h2>
+            <p class="muted">Inserisci il codice mostrato al cliente e riscatta il premio.</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="voucher-box">
+            <input id="voucherCode" type="text" placeholder="Codice voucher">
+            <button id="validateVoucherBtn" type="button" class="secondary">Verifica</button>
+            <button id="redeemVoucherBtn" type="button" class="primary">Riscatta</button>
+          </div>
+          <div id="voucherResult"></div>
+        </div>
+        <div class="card">
+          <h3>Ultimi voucher</h3>
+          <div id="vouchersTable" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <section id="tabPlayers" class="tab-panel hidden">
+        <div class="section-heading">
+          <div>
+            <h2>Giocatori</h2>
+            <p class="muted">Ultime partecipazioni registrate dal gioco.</p>
+          </div>
+        </div>
+        <div class="card">
+          <div id="participationsTable" class="table-wrap"></div>
+        </div>
       </section>
     </section>
-  </div>
+  </main>
 
   <script src="store.js"></script>
 </body>
