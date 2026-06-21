@@ -9,7 +9,7 @@
 <body>
   <div class="container">
     <h1>Admin Gratta &amp; Vinci</h1>
-    <p class="subtitle">Verifica dati salvati nel database (sola lettura)</p>
+    <p class="subtitle">Gestione minima piattaforma e verifica dati salvati nel database</p>
 
     <section id="loginSection" class="card">
       <h2>Accedi</h2>
@@ -31,6 +31,85 @@
       </div>
       <p class="note">Mostra al massimo le ultime 100 righe per tabella.</p>
       <div id="loadError" class="message error hidden"></div>
+      <div id="actionMessage" class="message success hidden"></div>
+
+      <div class="grid two">
+        <div class="card">
+          <h2 id="storeFormTitle">Crea negozio</h2>
+          <form id="storeForm">
+            <input type="hidden" id="storeId">
+            <label for="storeNameInput">Nome negozio</label>
+            <input type="text" id="storeNameInput" required>
+            <label for="storeSlugInput">Slug negozio</label>
+            <input type="text" id="storeSlugInput" required placeholder="bar-giorgio">
+            <label for="storeEmailInput">Email negozio</label>
+            <input type="email" id="storeEmailInput" required>
+            <label for="storePhoneInput">Telefono</label>
+            <input type="text" id="storePhoneInput">
+            <label for="storeLogoInput">Logo URL</label>
+            <input type="url" id="storeLogoInput" placeholder="https://...">
+            <div class="grid two compact">
+              <div>
+                <label for="storePrimaryInput">Colore primario</label>
+                <input type="color" id="storePrimaryInput" value="#667eea">
+              </div>
+              <div>
+                <label for="storeSecondaryInput">Colore secondario</label>
+                <input type="color" id="storeSecondaryInput" value="#764ba2">
+              </div>
+            </div>
+            <label for="storeExpiresInput">Scadenza abbonamento</label>
+            <input type="date" id="storeExpiresInput">
+            <label class="check">
+              <input type="checkbox" id="storeActiveInput" checked>
+              Negozio attivo
+            </label>
+            <div class="form-actions">
+              <button id="saveStoreBtn" type="submit">Salva negozio</button>
+              <button id="cancelStoreEditBtn" type="button" class="secondary hidden">Annulla modifica</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2 id="userFormTitle">Crea utente negozio</h2>
+          <form id="userForm">
+            <input type="hidden" id="userId">
+            <label for="userStoreInput">Negozio</label>
+            <select id="userStoreInput" required></select>
+            <label for="userNameInput">Nome utente</label>
+            <input type="text" id="userNameInput" required>
+            <label for="userEmailInput">Email utente</label>
+            <input type="email" id="userEmailInput" required>
+            <label for="userPasswordInput">Password</label>
+            <input type="password" id="userPasswordInput" autocomplete="new-password">
+            <small>Obbligatoria in creazione. In modifica lasciala vuota per non cambiarla.</small>
+            <label for="userRoleInput">Ruolo</label>
+            <select id="userRoleInput">
+              <option value="store_owner">Titolare negozio</option>
+              <option value="staff">Staff</option>
+            </select>
+            <label class="check">
+              <input type="checkbox" id="userActiveInput" checked>
+              Utente attivo
+            </label>
+            <div class="form-actions">
+              <button id="saveUserBtn" type="submit">Salva utente</button>
+              <button id="cancelUserEditBtn" type="button" class="secondary hidden">Annulla modifica</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Negozi</h2>
+        <div id="storesTable" class="table-wrap"></div>
+      </div>
+
+      <div class="card">
+        <h2>Utenti negozio</h2>
+        <div id="usersTable" class="table-wrap"></div>
+      </div>
 
       <div class="card">
         <h2>Alert</h2>

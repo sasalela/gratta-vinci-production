@@ -47,10 +47,21 @@ label {
 }
 
 input[type="email"],
-input[type="password"] {
+input[type="password"],
+input[type="text"],
+input[type="url"],
+input[type="date"],
+select {
   width: 100%;
-  max-width: 360px;
   padding: 10px;
+  margin-bottom: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+input[type="color"] {
+  width: 100%;
+  height: 42px;
   margin-bottom: 14px;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -67,6 +78,11 @@ button {
 
 button.secondary {
   background: #6c757d;
+}
+
+button.small {
+  padding: 7px 10px;
+  font-size: 0.84rem;
 }
 
 button:disabled {
@@ -98,6 +114,49 @@ button:disabled {
   background: #fdecea;
   color: #c0392b;
   border: 1px solid #f5c6cb;
+}
+
+.message.success {
+  background: #e8f8ef;
+  color: #1e7e34;
+  border: 1px solid #b7e4c7;
+}
+
+.grid {
+  display: grid;
+  gap: 18px;
+}
+
+.grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid.compact {
+  gap: 12px;
+}
+
+.check {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+
+.check input {
+  margin: 0;
+}
+
+.form-actions,
+.row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+small {
+  color: #666;
+  display: block;
+  margin: -8px 0 14px;
 }
 
 .table-wrap {
@@ -134,5 +193,9 @@ th {
   .toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .grid.two {
+    grid-template-columns: 1fr;
   }
 }

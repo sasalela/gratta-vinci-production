@@ -15,6 +15,37 @@ const campaignsTable = document.getElementById('campaignsTable');
 const participationsTable = document.getElementById('participationsTable');
 const vouchersTable = document.getElementById('vouchersTable');
 const alertsTable = document.getElementById('alertsTable');
+const storesTable = document.getElementById('storesTable');
+const usersTable = document.getElementById('usersTable');
+const actionMessage = document.getElementById('actionMessage');
+const storeForm = document.getElementById('storeForm');
+const storeFormTitle = document.getElementById('storeFormTitle');
+const storeIdInput = document.getElementById('storeId');
+const storeNameInput = document.getElementById('storeNameInput');
+const storeSlugInput = document.getElementById('storeSlugInput');
+const storeEmailInput = document.getElementById('storeEmailInput');
+const storePhoneInput = document.getElementById('storePhoneInput');
+const storeLogoInput = document.getElementById('storeLogoInput');
+const storePrimaryInput = document.getElementById('storePrimaryInput');
+const storeSecondaryInput = document.getElementById('storeSecondaryInput');
+const storeExpiresInput = document.getElementById('storeExpiresInput');
+const storeActiveInput = document.getElementById('storeActiveInput');
+const cancelStoreEditBtn = document.getElementById('cancelStoreEditBtn');
+const userForm = document.getElementById('userForm');
+const userFormTitle = document.getElementById('userFormTitle');
+const userIdInput = document.getElementById('userId');
+const userStoreInput = document.getElementById('userStoreInput');
+const userNameInput = document.getElementById('userNameInput');
+const userEmailInput = document.getElementById('userEmailInput');
+const userPasswordInput = document.getElementById('userPasswordInput');
+const userRoleInput = document.getElementById('userRoleInput');
+const userActiveInput = document.getElementById('userActiveInput');
+const cancelUserEditBtn = document.getElementById('cancelUserEditBtn');
+
+const state = {
+  stores: [],
+  users: []
+};
 
 function show(el) {
   el.classList.remove('hidden');
@@ -32,6 +63,20 @@ function formatDate(value) {
 function formatDateOnly(value) {
   if (!value) return '—';
   return new Date(value).toLocaleDateString('it-IT');
+}
+
+function formatDateInput(value) {
+  if (!value) return '';
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function escapeHtml(value) {
@@ -52,7 +97,10 @@ function renderTable(container, columns, rows) {
   const body = rows
     .map((row) => {
       const cells = columns
-        .map((col) => `<td>${escapeHtml(col.render(row))}</td>`)
+        .map((col) => {
+          const value = col.render(row);
+          return `<td>${col.html ? value : escapeHtml(value)}</td>`;
+        })
         .join('');
       return `<tr>${cells}</tr>`;
     })
@@ -83,6 +131,13 @@ function showLoadError(message) {
 function clearLoadError() {
   loadError.textContent = '';
   hide(loadError);
+  hide(actionMessage);
+}
+
+function showActionMessage(message) {
+  actionMessage.textContent = message;
+  show(actionMessage);
+  setTimeout(() => hide(actionMessage), 3000);
 }
 
 function showDashboard(email) {
@@ -99,9 +154,16 @@ function showLogin() {
 }
 
 async function fetchAdminData(path) {
+  return adminApi(path);
+}
+
+async function adminApi(path, options = {}) {
   const response = await fetch(path, {
+    ...options,
     headers: {
-      Authorization: `Bearer ${getToken()}`
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+      ...(options.headers || {})
     }
   });
 
@@ -119,6 +181,59 @@ async function fetchAdminData(path) {
   }
 
   return payload.data;
+}
+
+function populateStoreSelect() {
+  userStoreInput.innerHTML = state.stores
+    .map((store) => `<option value="${store.id}">${escapeHtml(store.name)} (${escapeHtml(store.slug)})</option>`)
+    .join('');
+}
+
+function renderStores(rows) {
+  renderTable(storesTable, [
+    { label: 'Nome', render: (row) => row.name },
+    { label: 'Slug', render: (row) => row.slug },
+    { label: 'Email', render: (row) => row.email },
+    { label: 'Attivo', render: (row) => (row.active ? 'Sì' : 'No') },
+    { label: 'Scadenza', render: (row) => formatDateOnly(row.subscriptionExpiresAt) },
+    { label: 'Utenti', render: (row) => row._count?.users ?? 0 },
+    { label: 'Campagne', render: (row) => row._count?.campaigns ?? 0 },
+    {
+      label: 'Azioni',
+      html: true,
+      render: (row) => `
+        <div class="row-actions">
+          <button class="small" type="button" data-action="edit-store" data-id="${escapeHtml(row.id)}">Modifica</button>
+          <button class="small secondary" type="button" data-action="toggle-store" data-id="${escapeHtml(row.id)}">
+            ${row.active ? 'Disattiva' : 'Attiva'}
+          </button>
+        </div>
+      `
+    }
+  ], rows);
+}
+
+function renderUsers(rows) {
+  renderTable(usersTable, [
+    { label: 'Nome', render: (row) => row.name },
+    { label: 'Email', render: (row) => row.email },
+    { label: 'Ruolo', render: (row) => row.role },
+    { label: 'Negozio', render: (row) => row.store?.name || '—' },
+    { label: 'Attivo', render: (row) => (row.active ? 'Sì' : 'No') },
+    { label: 'Creato', render: (row) => formatDate(row.createdAt) },
+    {
+      label: 'Azioni',
+      html: true,
+      render: (row) => `
+        <div class="row-actions">
+          <button class="small" type="button" data-action="edit-user" data-id="${escapeHtml(row.id)}">Modifica</button>
+          <button class="small secondary" type="button" data-action="toggle-user" data-id="${escapeHtml(row.id)}">
+            ${row.active ? 'Disattiva' : 'Attiva'}
+          </button>
+        </div>
+      `
+    }
+  ], rows);
 }
 
 function renderCampaigns(rows) {
@@ -168,19 +283,83 @@ function renderAlerts(rows) {
   ], rows);
 }
 
+function resetStoreForm() {
+  storeForm.reset();
+  storeIdInput.value = '';
+  storePrimaryInput.value = '#667eea';
+  storeSecondaryInput.value = '#764ba2';
+  storeActiveInput.checked = true;
+  storeFormTitle.textContent = 'Crea negozio';
+  hide(cancelStoreEditBtn);
+}
+
+function resetUserForm() {
+  userForm.reset();
+  userIdInput.value = '';
+  userActiveInput.checked = true;
+  userRoleInput.value = 'store_owner';
+  userFormTitle.textContent = 'Crea utente negozio';
+  hide(cancelUserEditBtn);
+  if (state.stores[0]) {
+    userStoreInput.value = state.stores[0].id;
+  }
+}
+
+function editStore(id) {
+  const store = state.stores.find((item) => item.id === id);
+  if (!store) return;
+
+  storeIdInput.value = store.id;
+  storeNameInput.value = store.name || '';
+  storeSlugInput.value = store.slug || '';
+  storeEmailInput.value = store.email || '';
+  storePhoneInput.value = store.phone || '';
+  storeLogoInput.value = store.logoUrl || '';
+  storePrimaryInput.value = store.primaryColor || '#667eea';
+  storeSecondaryInput.value = store.secondaryColor || '#764ba2';
+  storeExpiresInput.value = formatDateInput(store.subscriptionExpiresAt);
+  storeActiveInput.checked = Boolean(store.active);
+  storeFormTitle.textContent = `Modifica ${store.name}`;
+  show(cancelStoreEditBtn);
+  storeNameInput.focus();
+}
+
+function editUser(id) {
+  const user = state.users.find((item) => item.id === id);
+  if (!user) return;
+
+  userIdInput.value = user.id;
+  userStoreInput.value = user.storeId || '';
+  userNameInput.value = user.name || '';
+  userEmailInput.value = user.email || '';
+  userPasswordInput.value = '';
+  userRoleInput.value = user.role || 'store_owner';
+  userActiveInput.checked = Boolean(user.active);
+  userFormTitle.textContent = `Modifica ${user.name}`;
+  show(cancelUserEditBtn);
+  userNameInput.focus();
+}
+
 async function loadDashboardData() {
   clearLoadError();
   refreshBtn.disabled = true;
   refreshBtn.textContent = 'Caricamento...';
 
   try {
-    const [campaigns, participations, vouchers, alerts] = await Promise.all([
+    const [stores, users, campaigns, participations, vouchers, alerts] = await Promise.all([
+      fetchAdminData('/api/admin/stores'),
+      fetchAdminData('/api/admin/users'),
       fetchAdminData('/api/admin/campaigns'),
       fetchAdminData('/api/admin/participations'),
       fetchAdminData('/api/admin/vouchers'),
       fetchAdminData('/api/admin/alerts')
     ]);
 
+    state.stores = stores;
+    state.users = users;
+    populateStoreSelect();
+    renderStores(stores);
+    renderUsers(users);
     renderAlerts(alerts);
     renderCampaigns(campaigns);
     renderParticipations(participations);
@@ -190,6 +369,109 @@ async function loadDashboardData() {
   } finally {
     refreshBtn.disabled = false;
     refreshBtn.textContent = 'Aggiorna';
+  }
+}
+
+async function saveStore(event) {
+  event.preventDefault();
+  clearLoadError();
+
+  const id = storeIdInput.value;
+  const payload = {
+    name: storeNameInput.value.trim(),
+    slug: storeSlugInput.value.trim(),
+    email: storeEmailInput.value.trim(),
+    phone: storePhoneInput.value.trim(),
+    logoUrl: storeLogoInput.value.trim(),
+    primaryColor: storePrimaryInput.value,
+    secondaryColor: storeSecondaryInput.value,
+    subscriptionExpiresAt: storeExpiresInput.value,
+    active: storeActiveInput.checked
+  };
+
+  try {
+    await adminApi(id ? `/api/admin/stores/${id}` : '/api/admin/stores', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(payload)
+    });
+    resetStoreForm();
+    await loadDashboardData();
+    showActionMessage(id ? 'Negozio aggiornato.' : 'Negozio creato.');
+  } catch (error) {
+    showLoadError(error.message || 'Errore durante il salvataggio del negozio.');
+  }
+}
+
+async function saveUser(event) {
+  event.preventDefault();
+  clearLoadError();
+
+  const id = userIdInput.value;
+  const payload = {
+    storeId: userStoreInput.value,
+    name: userNameInput.value.trim(),
+    email: userEmailInput.value.trim(),
+    password: userPasswordInput.value,
+    role: userRoleInput.value,
+    active: userActiveInput.checked
+  };
+
+  if (!id && !payload.password) {
+    showLoadError('La password è obbligatoria per creare un nuovo utente.');
+    return;
+  }
+
+  if (id && !payload.password) {
+    delete payload.password;
+  }
+
+  try {
+    await adminApi(id ? `/api/admin/users/${id}` : '/api/admin/users', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(payload)
+    });
+    resetUserForm();
+    await loadDashboardData();
+    showActionMessage(id ? 'Utente aggiornato.' : 'Utente creato.');
+  } catch (error) {
+    showLoadError(error.message || 'Errore durante il salvataggio dell\'utente.');
+  }
+}
+
+async function handleTableAction(event) {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+
+  const { action, id } = button.dataset;
+  if (action === 'edit-store') {
+    editStore(id);
+    return;
+  }
+  if (action === 'edit-user') {
+    editUser(id);
+    return;
+  }
+
+  try {
+    if (action === 'toggle-store') {
+      const store = state.stores.find((item) => item.id === id);
+      await adminApi(`/api/admin/stores/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ active: !store.active })
+      });
+      showActionMessage(store.active ? 'Negozio disattivato.' : 'Negozio attivato.');
+    }
+    if (action === 'toggle-user') {
+      const user = state.users.find((item) => item.id === id);
+      await adminApi(`/api/admin/users/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ active: !user.active })
+      });
+      showActionMessage(user.active ? 'Utente disattivato.' : 'Utente attivato.');
+    }
+    await loadDashboardData();
+  } catch (error) {
+    showLoadError(error.message || 'Operazione non riuscita.');
   }
 }
 
@@ -247,6 +529,18 @@ function logout() {
 loginBtn.addEventListener('click', login);
 refreshBtn.addEventListener('click', loadDashboardData);
 logoutBtn.addEventListener('click', logout);
+storeForm.addEventListener('submit', saveStore);
+userForm.addEventListener('submit', saveUser);
+cancelStoreEditBtn.addEventListener('click', resetStoreForm);
+cancelUserEditBtn.addEventListener('click', resetUserForm);
+storesTable.addEventListener('click', handleTableAction);
+usersTable.addEventListener('click', handleTableAction);
+
+storeNameInput.addEventListener('input', () => {
+  if (!storeIdInput.value) {
+    storeSlugInput.value = slugify(storeNameInput.value);
+  }
+});
 
 adminPasswordInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
