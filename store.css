@@ -314,6 +314,79 @@ small {
   border-left-color: #22c55e;
 }
 
+.composer-layout {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.85fr);
+}
+
+.composer-form {
+  display: grid;
+  gap: 18px;
+}
+
+.composer-form section {
+  border-bottom: 1px solid #eef2f7;
+  display: grid;
+  gap: 10px;
+  padding-bottom: 16px;
+}
+
+.composer-form section:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.composer-preview {
+  position: sticky;
+  top: 18px;
+}
+
+.composer-preview-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.composer-preview-head h3 {
+  margin-bottom: 6px;
+}
+
+.composer-result {
+  display: grid;
+  gap: 14px;
+}
+
+.composer-summary-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.composer-summary-grid div {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.composer-summary-grid span {
+  color: #64748b;
+  display: block;
+  font-size: 0.82rem;
+  margin-bottom: 5px;
+}
+
+.composer-summary-grid strong {
+  color: #172033;
+}
+
+.composer-link {
+  margin-top: 0;
+}
+
 .stats-grid {
   display: grid;
   gap: 14px;
@@ -843,6 +916,7 @@ th {
   .login-card,
   .stats-grid,
   .operation-dashboard,
+  .composer-layout,
   .profile-grid,
   .plan-grid,
   .form-row.two {
@@ -872,6 +946,10 @@ th {
   .voucher-box button {
     flex: 1;
   }
+
+  .composer-preview {
+    position: static;
+  }
 }
 
 @media (max-width: 560px) {
@@ -893,6 +971,10 @@ th {
   }
 
   .quick-link {
+    grid-template-columns: 1fr;
+  }
+
+  .composer-summary-grid {
     grid-template-columns: 1fr;
   }
 

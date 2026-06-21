@@ -19,6 +19,11 @@ const quickPlayUrl = document.getElementById('quickPlayUrl');
 const copyQuickLinkBtn = document.getElementById('copyQuickLinkBtn');
 const quickNewCampaignBtn = document.getElementById('quickNewCampaignBtn');
 const quickInsights = document.getElementById('quickInsights');
+const composerForm = document.getElementById('composerForm');
+const composerResult = document.getElementById('composerResult');
+const composerPreviewBtn = document.getElementById('composerPreviewBtn');
+const composerApplyBtn = document.getElementById('composerApplyBtn');
+const composerResetBtn = document.getElementById('composerResetBtn');
 const campaignForm = document.getElementById('campaignForm');
 const saveCampaignBtn = document.getElementById('saveCampaignBtn');
 const createPrizeBtn = document.getElementById('createPrizeBtn');
@@ -77,7 +82,8 @@ const state = {
   subscription: null,
   billingPlans: [],
   scannerStream: null,
-  scannerFrame: null
+  scannerFrame: null,
+  composerPreview: null
 };
 
 const GAME_TYPE_LABELS = {
@@ -277,7 +283,7 @@ function isStoreOperational() {
 
 function applyOperationalLocks() {
   const locked = !isStoreOperational();
-  [newCampaignBtn, quickNewCampaignBtn, saveCampaignBtn, createPrizeBtn].forEach((button) => {
+  [newCampaignBtn, quickNewCampaignBtn, saveCampaignBtn, createPrizeBtn, composerPreviewBtn, composerApplyBtn].forEach((button) => {
     if (button) button.disabled = locked;
   });
 }
@@ -330,6 +336,117 @@ async function api(path, options = {}) {
     throw new Error(rawMessage);
   }
   return payload.data;
+}
+
+function getComposerDraft() {
+  return {
+    businessType: document.getElementById('composerBusinessType').value,
+    goal: document.getElementById('composerGoal').value,
+    rewardStyle: document.getElementById('composerRewardStyle').value,
+    gamePreference: document.getElementById('composerGamePreference').value,
+    mainPrize: document.getElementById('composerMainPrize').value.trim(),
+    durationDays: Number(document.getElementById('composerDurationDays').value || 7),
+    discountHigh: Number(document.getElementById('composerDiscountHigh').value || 30),
+    discountLow: Number(document.getElementById('composerDiscountLow').value || 10),
+    collectPhone: document.getElementById('composerCollectPhone').checked,
+    campaignName: document.getElementById('composerCampaignName').value.trim()
+  };
+}
+
+function resetComposer() {
+  composerForm.reset();
+  document.getElementById('composerBusinessType').value = 'bar';
+  document.getElementById('composerGoal').value = 'bring_customers';
+  document.getElementById('composerRewardStyle').value = 'guaranteed_multi_prize';
+  document.getElementById('composerGamePreference').value = 'auto';
+  document.getElementById('composerDurationDays').value = 7;
+  document.getElementById('composerDiscountHigh').value = 30;
+  document.getElementById('composerDiscountLow').value = 10;
+  state.composerPreview = null;
+  composerResult.innerHTML = '<p class="muted">Compila i campi e genera una proposta. Potrai modificarla dopo la creazione.</p>';
+}
+
+function renderComposerPreview(preview) {
+  const campaign = preview.campaign;
+  const prizes = preview.prizes || [];
+  const totalProbability = prizes.reduce((sum, prize) => sum + Number(prize.winProbability || 0), 0);
+  const playUrl = `${window.location.origin}${preview.playUrl || `/?store=${state.store?.slug}&campaign=${campaign.slug}`}`;
+
+  composerResult.innerHTML = `
+    <div class="composer-preview-head">
+      <h3>${escapeHtml(campaign.name)}</h3>
+      <span class="campaign-badge">${campaign.guaranteedWin ? 'Vincita garantita' : 'Premio non garantito'}</span>
+    </div>
+    <p>${escapeHtml(campaign.description || '')}</p>
+    <div class="composer-summary-grid">
+      <div><span>Gioco</span><strong>${escapeHtml(getGameTypeLabel(campaign.gameType))}</strong></div>
+      <div><span>Durata</span><strong>${formatDate(campaign.startDate)} - ${formatDate(campaign.endDate)}</strong></div>
+      <div><span>Premi</span><strong>${prizes.length}</strong></div>
+      <div><span>Probabilità totale</span><strong>${Math.round(totalProbability * 10) / 10}%</strong></div>
+    </div>
+    <h4>Premi proposti</h4>
+    <div class="prize-list compact">
+      ${prizes.map((prize) => `
+        <div class="prize-stock">
+          <strong>${escapeHtml(prize.emoji || '')} ${escapeHtml(prize.name)}</strong>
+          <span>${escapeHtml(String(prize.totalQuantity))} disponibili · ${escapeHtml(String(prize.winProbability))}%</span>
+        </div>
+      `).join('')}
+    </div>
+    <h4>Perché questa proposta</h4>
+    <p class="muted">${escapeHtml(preview.recommendation?.summary || '')}</p>
+    <p class="muted">${escapeHtml(preview.recommendation?.gameReason || '')}</p>
+    <div class="play-link composer-link">
+      <input readonly value="${escapeHtml(playUrl)}">
+    </div>
+  `;
+}
+
+async function previewComposer(event) {
+  if (event) event.preventDefault();
+  clearError(appError);
+  composerPreviewBtn.disabled = true;
+  composerPreviewBtn.textContent = 'Genero...';
+
+  try {
+    const preview = await api('/api/store/composer/preview', {
+      method: 'POST',
+      body: JSON.stringify(getComposerDraft())
+    });
+    state.composerPreview = preview;
+    renderComposerPreview(preview);
+  } catch (error) {
+    setError(appError, error.message);
+  } finally {
+    composerPreviewBtn.disabled = false;
+    composerPreviewBtn.textContent = 'Genera anteprima';
+  }
+}
+
+async function applyComposer() {
+  clearError(appError);
+  composerApplyBtn.disabled = true;
+  composerApplyBtn.textContent = 'Creo...';
+
+  try {
+    const created = await api('/api/store/composer/apply', {
+      method: 'POST',
+      body: JSON.stringify(getComposerDraft())
+    });
+    await loadAll();
+    showSuccess('Campagna creata dal Composer. Puoi modificarla o generare i materiali promo.');
+    const campaignId = created.campaign?.id;
+    if (campaignId) {
+      editCampaign(campaignId);
+    } else {
+      switchTab('campaigns');
+    }
+  } catch (error) {
+    setError(appError, error.message);
+  } finally {
+    composerApplyBtn.disabled = false;
+    composerApplyBtn.textContent = 'Crea campagna';
+  }
 }
 
 function renderTable(container, columns, rows) {
@@ -1172,6 +1289,9 @@ newCampaignBtn.addEventListener('click', newCampaign);
 quickNewCampaignBtn.addEventListener('click', newCampaign);
 copyQuickLinkBtn.addEventListener('click', copyQuickLink);
 campaignForm.addEventListener('submit', saveCampaign);
+composerForm.addEventListener('submit', previewComposer);
+composerApplyBtn.addEventListener('click', applyComposer);
+composerResetBtn.addEventListener('click', resetComposer);
 createPrizeBtn.addEventListener('click', createPrize);
 resetPrizeBtn.addEventListener('click', resetPrizeForm);
 validateVoucherBtn.addEventListener('click', validateVoucher);
@@ -1213,6 +1333,7 @@ document.addEventListener('click', (event) => {
 });
 
 resetCampaignForm();
+resetComposer();
 
 if (getToken()) {
   showApp();

@@ -141,6 +141,20 @@ const SubscriptionRequestSchema = z.object({
   planId: z.enum(['basic', 'pro'])
 });
 
+const ComposerSchema = z.object({
+  businessType: z.enum(['bar', 'restaurant', 'retail', 'beauty', 'fitness', 'generic']).default('generic'),
+  goal: z.enum(['weekend_promo', 'bring_customers', 'collect_contacts', 'reward_purchase']).default('bring_customers'),
+  rewardStyle: z.enum(['single_prize', 'guaranteed_multi_prize', 'discounts_only']).default('guaranteed_multi_prize'),
+  gamePreference: z.enum(['auto', 'scratch_card', 'wheel', 'instant_reveal']).default('auto'),
+  campaignName: z.string().optional(),
+  mainPrize: z.string().optional(),
+  durationDays: z.number().int().min(1).max(60).default(7),
+  discountHigh: z.number().int().min(1).max(90).default(30),
+  discountLow: z.number().int().min(1).max(90).default(10),
+  collectPhone: z.boolean().default(false),
+  startDate: z.string().optional()
+});
+
 const SUBSCRIPTION_PLANS = [
   {
     id: 'trial',
@@ -384,6 +398,206 @@ function buildSessionKey(params: {
   }
 
   return `${params.campaignId}_${identity}`;
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 70) || 'campagna';
+}
+
+async function buildUniqueCampaignSlug(storeId: string, baseSlug: string): Promise<string> {
+  const cleanBase = slugify(baseSlug);
+  let slug = cleanBase;
+  let suffix = 2;
+
+  while (await prisma.campaign.findFirst({ where: { storeId, slug } })) {
+    slug = `${cleanBase}-${suffix}`;
+    suffix += 1;
+  }
+
+  return slug;
+}
+
+function formatDateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function getBusinessDefaults(businessType: z.infer<typeof ComposerSchema>['businessType']) {
+  const defaults = {
+    bar: {
+      label: 'Bar',
+      topPrize: 'Birra gratis',
+      emoji: '🍺',
+      description: 'Perfetta per aumentare passaggi e consumazioni nel weekend.'
+    },
+    restaurant: {
+      label: 'Ristorante',
+      topPrize: 'Dessert omaggio',
+      emoji: '🍰',
+      description: 'Ideale per riportare clienti a pranzo o cena.'
+    },
+    retail: {
+      label: 'Negozio',
+      topPrize: 'Buono acquisto',
+      emoji: '🎁',
+      description: 'Pensata per aumentare ingressi e acquisti in negozio.'
+    },
+    beauty: {
+      label: 'Beauty',
+      topPrize: 'Trattamento omaggio',
+      emoji: '✨',
+      description: 'Utile per raccogliere contatti e prenotazioni.'
+    },
+    fitness: {
+      label: 'Fitness',
+      topPrize: 'Ingresso gratuito',
+      emoji: '💪',
+      description: 'Adatta a generare prove e nuovi iscritti.'
+    },
+    generic: {
+      label: 'Attività',
+      topPrize: 'Premio speciale',
+      emoji: '🎁',
+      description: 'Campagna pronta per coinvolgere i clienti.'
+    }
+  };
+
+  return defaults[businessType] || defaults.generic;
+}
+
+function buildComposerProposal(
+  input: z.infer<typeof ComposerSchema>,
+  store: { name: string; slug: string },
+  slug: string
+) {
+  const defaults = getBusinessDefaults(input.businessType);
+  const start = input.startDate ? new Date(input.startDate) : new Date();
+  const end = new Date(start);
+  end.setDate(start.getDate() + input.durationDays);
+
+  const mainPrize = (input.mainPrize || defaults.topPrize).trim();
+  const campaignName = (input.campaignName || `${store.name} - Promo ${input.durationDays} giorni`).trim();
+  const customerFields: CustomerField[] = [
+    { key: 'name', label: 'Nome', required: true, enabled: true },
+    { key: 'email', label: 'Email', required: true, enabled: true },
+    ...(input.collectPhone ? [{ key: 'phone' as const, label: 'Telefono', required: false, enabled: true }] : [])
+  ];
+
+  let gameType: 'scratch_card' | 'wheel' | 'instant_reveal' = 'wheel';
+  let guaranteedWin = true;
+  let prizes: Array<z.infer<typeof PrizeSchema>> = [];
+  const loseMessage = 'Nessun premio questa volta. Riprova domani!';
+
+  if (input.rewardStyle === 'single_prize') {
+    guaranteedWin = false;
+    gameType = 'scratch_card';
+    prizes = [
+      {
+        name: mainPrize,
+        emoji: defaults.emoji,
+        description: mainPrize,
+        winProbability: 10,
+        totalQuantity: 25,
+        remainingQuantity: 25,
+        active: true
+      }
+    ];
+  } else if (input.rewardStyle === 'discounts_only') {
+    guaranteedWin = true;
+    gameType = 'wheel';
+    prizes = [
+      {
+        name: `Sconto ${input.discountHigh}%`,
+        emoji: '🏷️',
+        description: `Sconto ${input.discountHigh}% in negozio`,
+        winProbability: 25,
+        totalQuantity: 100,
+        remainingQuantity: 100,
+        active: true
+      },
+      {
+        name: `Sconto ${input.discountLow}%`,
+        emoji: '💸',
+        description: `Sconto ${input.discountLow}% in negozio`,
+        winProbability: 75,
+        totalQuantity: 300,
+        remainingQuantity: 300,
+        active: true
+      }
+    ];
+  } else {
+    guaranteedWin = true;
+    gameType = 'wheel';
+    prizes = [
+      {
+        name: mainPrize,
+        emoji: defaults.emoji,
+        description: mainPrize,
+        winProbability: 5,
+        totalQuantity: 20,
+        remainingQuantity: 20,
+        active: true
+      },
+      {
+        name: `Sconto ${input.discountHigh}%`,
+        emoji: '🏷️',
+        description: `Sconto ${input.discountHigh}% in negozio`,
+        winProbability: 20,
+        totalQuantity: 100,
+        remainingQuantity: 100,
+        active: true
+      },
+      {
+        name: `Sconto ${input.discountLow}%`,
+        emoji: '💸',
+        description: `Sconto ${input.discountLow}% in negozio`,
+        winProbability: 75,
+        totalQuantity: 300,
+        remainingQuantity: 300,
+        active: true
+      }
+    ];
+  }
+
+  if (input.gamePreference !== 'auto') {
+    gameType = input.gamePreference;
+  }
+
+  const campaign = {
+    name: campaignName,
+    slug,
+    description: `${defaults.description} Gioca e scopri subito cosa hai vinto da ${store.name}.`,
+    gameType,
+    customerFields,
+    playLimitMode: 'per_day',
+    loseMessage,
+    guaranteedWin,
+    voucherValidityDays: 15,
+    active: true,
+    startDate: formatDateOnly(start),
+    endDate: formatDateOnly(end)
+  };
+
+  return {
+    campaign,
+    prizes,
+    recommendation: {
+      businessLabel: defaults.label,
+      summary: guaranteedWin
+        ? 'Configurazione multipremio con vincita garantita: ideale per far partecipare più clienti senza frizioni.'
+        : 'Configurazione premio unico: più semplice, con premio raro e costo promozionale controllato.',
+      gameReason: gameType === 'wheel'
+        ? 'La ruota rende visibili i premi multipli ed è la scelta più chiara per sconti e premi diversi.'
+        : gameType === 'scratch_card'
+          ? 'Il gratta e vinci è il formato più classico per un premio singolo.'
+          : 'Le scatole misteriose sono rapide su mobile e adatte a una promo immediata.'
+    }
+  };
 }
 
 function getStoreSubscriptionStatus(store: { active: boolean; subscriptionExpiresAt: Date | null }) {
@@ -1211,6 +1425,90 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
 
         return res.json({ success: true, data: store });
+      }
+
+      if (path === '/api/store/composer/preview' && method === 'POST') {
+        if (!(await assertStoreCanManageCampaigns(storeId, res))) {
+          return;
+        }
+
+        const validation = ComposerSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({ success: false, errors: validation.error.errors });
+        }
+
+        const store = await prisma.store.findUnique({ where: { id: storeId } });
+        if (!store) {
+          return res.status(404).json({ success: false, error: 'Negozio non trovato.' });
+        }
+
+        const baseName = validation.data.campaignName || `${store.name} promo`;
+        const slug = await buildUniqueCampaignSlug(storeId, baseName);
+        const proposal = buildComposerProposal(validation.data, store, slug);
+        const playUrl = `/?store=${store.slug}&campaign=${proposal.campaign.slug}`;
+
+        return res.json({
+          success: true,
+          data: {
+            ...proposal,
+            playUrl
+          }
+        });
+      }
+
+      if (path === '/api/store/composer/apply' && method === 'POST') {
+        if (!(await assertStoreCanManageCampaigns(storeId, res))) {
+          return;
+        }
+
+        const validation = ComposerSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({ success: false, errors: validation.error.errors });
+        }
+
+        const store = await prisma.store.findUnique({ where: { id: storeId } });
+        if (!store) {
+          return res.status(404).json({ success: false, error: 'Negozio non trovato.' });
+        }
+
+        const baseName = validation.data.campaignName || `${store.name} promo`;
+        const slug = await buildUniqueCampaignSlug(storeId, baseName);
+        const proposal = buildComposerProposal(validation.data, store, slug);
+        const created = await prisma.$transaction(async (tx) => {
+          const campaign = await tx.campaign.create({
+            data: {
+              ...proposal.campaign,
+              storeId,
+              prizes: [],
+              startDate: new Date(proposal.campaign.startDate),
+              endDate: new Date(proposal.campaign.endDate)
+            } as any
+          });
+
+          const prizes = await Promise.all(proposal.prizes.map((prize) => (
+            tx.prize.create({
+              data: {
+                ...prize,
+                campaignId: campaign.id,
+                remainingQuantity: prize.remainingQuantity ?? prize.totalQuantity
+              } as any
+            })
+          )));
+
+          return { campaign, prizes };
+        });
+
+        const playUrl = `/?store=${store.slug}&campaign=${created.campaign.slug}`;
+
+        return res.json({
+          success: true,
+          data: {
+            campaign: created.campaign,
+            prizes: created.prizes,
+            playUrl,
+            recommendation: proposal.recommendation
+          }
+        });
       }
 
       if (path === '/api/store/campaigns' && method === 'GET') {
