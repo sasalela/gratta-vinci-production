@@ -89,7 +89,8 @@ label {
   margin: 13px 0 6px;
 }
 
-input {
+input,
+select {
   background: #fff;
   border: 1px solid #d1d5db;
   border-radius: 12px;
@@ -98,7 +99,8 @@ input {
   width: 100%;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.16);
   outline: none;

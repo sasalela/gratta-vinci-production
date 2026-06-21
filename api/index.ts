@@ -16,6 +16,7 @@ const LoginSchema = z.object({
 const RegisterStoreSchema = z.object({
   storeName: z.string().min(2),
   storeSlug: z.string().regex(/^[a-z0-9-]+$/),
+  businessType: z.enum(['bar', 'restaurant', 'retail', 'beauty', 'fitness', 'generic']).default('generic'),
   ownerName: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(6),
@@ -32,6 +33,7 @@ const StoreSchema = z.object({
   name: z.string().min(1),
   slug: z.string().regex(/^[a-z0-9-]+$/),
   email: z.string().email(),
+  businessType: z.enum(['bar', 'restaurant', 'retail', 'beauty', 'fitness', 'generic']).default('generic'),
   phone: z.string().optional(),
   address: z.string().optional(),
   logoUrl: z.string().url().optional().or(z.literal('')),
@@ -45,6 +47,7 @@ const StoreUpdateSchema = StoreSchema.partial();
 
 const StoreProfileSchema = z.object({
   name: z.string().min(1),
+  businessType: z.enum(['bar', 'restaurant', 'retail', 'beauty', 'fitness', 'generic']).default('generic'),
   phone: z.string().optional(),
   address: z.string().optional(),
   logoUrl: z.string().url().optional().or(z.literal('')),
@@ -987,6 +990,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name: data.storeName,
             slug: data.storeSlug,
             email,
+            businessType: data.businessType,
             phone: data.phone || null,
             address: data.address || null,
             logoUrl: data.logoUrl || null,

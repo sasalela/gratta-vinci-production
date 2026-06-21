@@ -1,0 +1,1 @@
+ALTER TABLE "Store" ADD COLUMN IF NOT EXISTS "businessType" TEXT NOT NULL DEFAULT 'generic';

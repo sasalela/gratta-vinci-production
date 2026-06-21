@@ -19,6 +19,14 @@ const quickPlayUrl = document.getElementById('quickPlayUrl');
 const copyQuickLinkBtn = document.getElementById('copyQuickLinkBtn');
 const quickNewCampaignBtn = document.getElementById('quickNewCampaignBtn');
 const quickInsights = document.getElementById('quickInsights');
+const setupPanel = document.getElementById('setupPanel');
+const setupBusinessType = document.getElementById('setupBusinessType');
+const setupPhone = document.getElementById('setupPhone');
+const setupAddress = document.getElementById('setupAddress');
+const setupLogoUrl = document.getElementById('setupLogoUrl');
+const setupPrimaryColor = document.getElementById('setupPrimaryColor');
+const setupSecondaryColor = document.getElementById('setupSecondaryColor');
+const saveSetupBtn = document.getElementById('saveSetupBtn');
 const composerForm = document.getElementById('composerForm');
 const composerResult = document.getElementById('composerResult');
 const composerPreviewBtn = document.getElementById('composerPreviewBtn');
@@ -60,6 +68,7 @@ const statOpenVouchers = document.getElementById('statOpenVouchers');
 const statRedeemedVouchers = document.getElementById('statRedeemedVouchers');
 const profileForm = document.getElementById('profileForm');
 const profileName = document.getElementById('profileName');
+const profileBusinessType = document.getElementById('profileBusinessType');
 const profilePhone = document.getElementById('profilePhone');
 const profileAddress = document.getElementById('profileAddress');
 const profileLogoUrl = document.getElementById('profileLogoUrl');
@@ -122,8 +131,21 @@ const GAME_TYPE_LABELS = {
   instant_reveal: 'Scatole misteriose'
 };
 
+const BUSINESS_TYPE_LABELS = {
+  bar: 'Bar / pub',
+  restaurant: 'Ristorante',
+  retail: 'Negozio',
+  beauty: 'Beauty / estetica',
+  fitness: 'Palestra / fitness',
+  generic: 'Altro'
+};
+
 function getGameTypeLabel(gameType) {
   return GAME_TYPE_LABELS[gameType] || gameType || 'Gratta e vinci';
+}
+
+function getBusinessTypeLabel(value) {
+  return BUSINESS_TYPE_LABELS[value] || 'Attività';
 }
 
 function isGuaranteedWinEnabled() {
@@ -311,6 +333,16 @@ function isStoreOperational() {
   return Boolean(state.subscription?.operational);
 }
 
+function isStoreProfileReady() {
+  return Boolean(
+    state.store?.name
+    && state.store?.businessType
+    && state.store.businessType !== 'generic'
+    && state.store?.phone
+    && state.store?.address
+  );
+}
+
 function applyOperationalLocks() {
   const locked = !isStoreOperational();
   [newCampaignBtn, quickNewCampaignBtn, saveCampaignBtn, createPrizeBtn, composerPreviewBtn, composerApplyBtn].forEach((button) => {
@@ -393,6 +425,24 @@ function setComposerValue(field, value) {
   renderComposerStep();
 }
 
+function hasKnownBusinessType() {
+  return Boolean(state.store?.businessType && state.store.businessType !== 'generic');
+}
+
+function getVisibleComposerSteps() {
+  return COMPOSER_STEPS
+    .map((step, index) => ({ ...step, index }))
+    .filter((step) => step.index !== 0 || !hasKnownBusinessType());
+}
+
+function clampComposerStep() {
+  const visibleSteps = getVisibleComposerSteps();
+  if (!visibleSteps.some((step) => step.index === state.composerStep)) {
+    state.composerStep = visibleSteps[0]?.index ?? 0;
+  }
+  return visibleSteps;
+}
+
 function updateComposerChoiceState() {
   document.querySelectorAll('[data-composer-set]').forEach((button) => {
     const field = button.dataset.composerSet;
@@ -402,28 +452,32 @@ function updateComposerChoiceState() {
 }
 
 function renderComposerStep() {
+  const visibleSteps = clampComposerStep();
+  const currentVisibleIndex = Math.max(0, visibleSteps.findIndex((step) => step.index === state.composerStep));
   document.querySelectorAll('.composer-step').forEach((step) => {
     step.classList.toggle('active', Number(step.dataset.composerStep) === state.composerStep);
   });
 
-  composerProgress.innerHTML = COMPOSER_STEPS.map((step, index) => (
-    `<button type="button" class="${index === state.composerStep ? 'active' : ''}" data-composer-go-step="${index}">
+  composerProgress.innerHTML = visibleSteps.map((step, index) => (
+    `<button type="button" class="${step.index === state.composerStep ? 'active' : ''}" data-composer-go-step="${step.index}">
       <span>${index + 1}</span>${escapeHtml(step.title)}
     </button>`
   )).join('');
 
-  composerBackBtn.disabled = state.composerStep === 0;
-  composerNextBtn.classList.toggle('hidden', state.composerStep === COMPOSER_STEPS.length - 1);
-  composerPreviewBtn.classList.toggle('hidden', state.composerStep !== COMPOSER_STEPS.length - 1);
-  composerApplyBtn.classList.toggle('hidden', state.composerStep !== COMPOSER_STEPS.length - 1);
+  composerBackBtn.disabled = currentVisibleIndex === 0;
+  composerNextBtn.classList.toggle('hidden', currentVisibleIndex === visibleSteps.length - 1);
+  composerPreviewBtn.classList.toggle('hidden', currentVisibleIndex !== visibleSteps.length - 1);
+  composerApplyBtn.classList.toggle('hidden', currentVisibleIndex !== visibleSteps.length - 1);
   composerCoachTitle.textContent = COMPOSER_STEPS[state.composerStep].title;
-  composerCoachText.textContent = COMPOSER_STEPS[state.composerStep].text;
+  composerCoachText.textContent = hasKnownBusinessType() && state.composerStep !== 0
+    ? `${COMPOSER_STEPS[state.composerStep].text} Settore già impostato: ${getBusinessTypeLabel(state.store.businessType)}.`
+    : COMPOSER_STEPS[state.composerStep].text;
   updateComposerChoiceState();
 }
 
 function resetComposer() {
   composerForm.reset();
-  document.getElementById('composerBusinessType').value = 'bar';
+  document.getElementById('composerBusinessType').value = state.store?.businessType || 'generic';
   document.getElementById('composerGoal').value = 'bring_customers';
   document.getElementById('composerRewardStyle').value = 'guaranteed_multi_prize';
   document.getElementById('composerGamePreference').value = 'auto';
@@ -433,7 +487,7 @@ function resetComposer() {
   document.getElementById('composerDiscountHigh').value = 30;
   document.getElementById('composerDiscountLow').value = 10;
   state.composerPreview = null;
-  state.composerStep = 0;
+  state.composerStep = hasKnownBusinessType() ? 1 : 0;
   composerInlineStatus.classList.add('hidden');
   composerInlineStatus.innerHTML = '';
   composerResult.innerHTML = '<p class="muted">La preview si aggiorna mentre rispondi.</p>';
@@ -667,8 +721,10 @@ async function loadAll() {
     storeName.textContent = me.store?.name || 'Negozio';
     userLabel.textContent = ` — ${me.user.email}`;
     populateProfileForm(me.store);
+    populateSetupForm(me.store);
     renderSubscriptionBanner();
     applyOperationalLocks();
+    renderSetupPanel();
     renderBillingSection();
     renderOperationalDashboard();
     renderStats();
@@ -676,6 +732,7 @@ async function loadAll() {
     renderParticipations(participations);
     renderVouchers(vouchers);
     renderAlerts(alerts);
+    resetComposer();
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
       sessionStorage.removeItem(TOKEN_KEY);
@@ -864,9 +921,71 @@ function storeInitials(name) {
     .join('');
 }
 
+function populateSetupForm(store) {
+  if (!store) return;
+  setupBusinessType.value = store.businessType || 'generic';
+  setupPhone.value = store.phone || '';
+  setupAddress.value = store.address || '';
+  setupLogoUrl.value = store.logoUrl || '';
+  setupPrimaryColor.value = store.primaryColor || '#667eea';
+  setupSecondaryColor.value = store.secondaryColor || '#764ba2';
+}
+
+function renderSetupPanel() {
+  const shouldShowSetup = isStoreOperational() && !isStoreProfileReady();
+  setupPanel.classList.toggle('hidden', !shouldShowSetup);
+  if (!shouldShowSetup) return;
+
+  const missing = [];
+  if (!state.store?.businessType || state.store.businessType === 'generic') missing.push('settore');
+  if (!state.store?.phone) missing.push('telefono');
+  if (!state.store?.address) missing.push('indirizzo');
+
+  const intro = setupPanel.querySelector('p:not(.eyebrow)');
+  if (intro) {
+    intro.textContent = `Mancano ${missing.join(', ')}. Completa questi dati una volta sola: poi le campagne partiranno già precompilate.`;
+  }
+}
+
+async function saveSetup() {
+  clearError(appError);
+  saveSetupBtn.disabled = true;
+  saveSetupBtn.textContent = 'Salvo...';
+
+  try {
+    const store = await api('/api/store/me', {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: state.store?.name || storeName.textContent || 'Negozio',
+        businessType: setupBusinessType.value,
+        phone: setupPhone.value.trim(),
+        address: setupAddress.value.trim(),
+        logoUrl: setupLogoUrl.value.trim(),
+        primaryColor: setupPrimaryColor.value,
+        secondaryColor: setupSecondaryColor.value
+      })
+    });
+
+    state.store = store;
+    storeName.textContent = store.name;
+    populateProfileForm(store);
+    populateSetupForm(store);
+    renderSetupPanel();
+    resetComposer();
+    switchTab('composer');
+    showSuccess('Pagina negozio salvata. Ora puoi creare la prima campagna guidata.');
+  } catch (error) {
+    setError(appError, error.message);
+  } finally {
+    saveSetupBtn.disabled = false;
+    saveSetupBtn.textContent = 'Salva pagina e crea campagna';
+  }
+}
+
 function populateProfileForm(store) {
   if (!store) return;
   profileName.value = store.name || '';
+  profileBusinessType.value = store.businessType || 'generic';
   profilePhone.value = store.phone || '';
   profileAddress.value = store.address || '';
   profileLogoUrl.value = store.logoUrl || '';
@@ -880,7 +999,11 @@ function renderProfilePreview() {
   const secondary = profileSecondaryColor.value || '#764ba2';
   profilePreview.style.background = `linear-gradient(135deg, ${primary}, ${secondary})`;
   profilePreviewName.textContent = profileName.value || 'Negozio';
-  profilePreviewMeta.textContent = [profilePhone.value, profileAddress.value].filter(Boolean).join(' · ') || 'Colori e dati compariranno su gioco e card premio.';
+  profilePreviewMeta.textContent = [
+    getBusinessTypeLabel(profileBusinessType.value),
+    profilePhone.value,
+    profileAddress.value
+  ].filter(Boolean).join(' · ') || 'Colori e dati compariranno su gioco e card premio.';
 
   if (profileLogoUrl.value.trim()) {
     profilePreviewLogo.innerHTML = `<img src="${escapeHtml(profileLogoUrl.value.trim())}" alt="${escapeHtml(profileName.value || 'Logo negozio')}">`;
@@ -898,6 +1021,7 @@ async function saveProfile(event) {
       method: 'PUT',
       body: JSON.stringify({
         name: profileName.value.trim(),
+        businessType: profileBusinessType.value,
         phone: profilePhone.value.trim(),
         address: profileAddress.value.trim(),
         logoUrl: profileLogoUrl.value.trim(),
@@ -908,6 +1032,9 @@ async function saveProfile(event) {
 
     state.store = store;
     storeName.textContent = store.name;
+    populateSetupForm(store);
+    renderSetupPanel();
+    resetComposer();
     renderProfilePreview();
     showSuccess('Profilo negozio aggiornato correttamente.');
   } catch (error) {
@@ -1385,16 +1512,21 @@ logoutBtn.addEventListener('click', logout);
 newCampaignBtn.addEventListener('click', newCampaign);
 quickNewCampaignBtn.addEventListener('click', newCampaign);
 copyQuickLinkBtn.addEventListener('click', copyQuickLink);
+saveSetupBtn.addEventListener('click', saveSetup);
 campaignForm.addEventListener('submit', saveCampaign);
 composerForm.addEventListener('submit', previewComposer);
 composerApplyBtn.addEventListener('click', applyComposer);
 composerResetBtn.addEventListener('click', resetComposer);
 composerBackBtn.addEventListener('click', () => {
-  state.composerStep = Math.max(0, state.composerStep - 1);
+  const visibleSteps = getVisibleComposerSteps();
+  const currentIndex = visibleSteps.findIndex((step) => step.index === state.composerStep);
+  state.composerStep = visibleSteps[Math.max(0, currentIndex - 1)]?.index ?? state.composerStep;
   renderComposerStep();
 });
 composerNextBtn.addEventListener('click', async () => {
-  state.composerStep = Math.min(COMPOSER_STEPS.length - 1, state.composerStep + 1);
+  const visibleSteps = getVisibleComposerSteps();
+  const currentIndex = visibleSteps.findIndex((step) => step.index === state.composerStep);
+  state.composerStep = visibleSteps[Math.min(visibleSteps.length - 1, currentIndex + 1)]?.index ?? state.composerStep;
   renderComposerStep();
   await previewComposer();
 });
@@ -1461,8 +1593,9 @@ document.addEventListener('click', (event) => {
   }
 });
 
-[profileName, profilePhone, profileAddress, profileLogoUrl, profilePrimaryColor, profileSecondaryColor].forEach((input) => {
+[profileName, profileBusinessType, profilePhone, profileAddress, profileLogoUrl, profilePrimaryColor, profileSecondaryColor].forEach((input) => {
   input.addEventListener('input', renderProfilePreview);
+  input.addEventListener('change', renderProfilePreview);
 });
 
 resetCampaignForm();

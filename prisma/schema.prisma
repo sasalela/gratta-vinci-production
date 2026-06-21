@@ -15,6 +15,7 @@ model Store {
   name                  String
   slug                  String     @unique
   email                 String
+  businessType          String     @default("generic")
   phone                 String?
   address               String?
   logoUrl               String?

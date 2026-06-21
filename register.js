@@ -7,6 +7,7 @@ const errorBox = document.getElementById('errorBox');
 const successBox = document.getElementById('successBox');
 const storeName = document.getElementById('storeName');
 const storeSlug = document.getElementById('storeSlug');
+const businessType = document.getElementById('businessType');
 const ownerName = document.getElementById('ownerName');
 const email = document.getElementById('email');
 const password = document.getElementById('password');
@@ -66,6 +67,7 @@ async function registerStore(event) {
       body: JSON.stringify({
         storeName: storeName.value.trim(),
         storeSlug: storeSlug.value.trim(),
+        businessType: businessType.value,
         ownerName: ownerName.value.trim(),
         email: email.value.trim(),
         password: password.value,

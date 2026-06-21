@@ -55,6 +55,45 @@
         <strong id="subscriptionDays">—</strong>
       </section>
 
+      <section id="setupPanel" class="setup-panel hidden">
+        <div>
+          <p class="eyebrow">Prima configurazione</p>
+          <h2>Completa la pagina negozio</h2>
+          <p>Usiamo i dati dell’account come base. Se manca qualcosa, sistemalo qui senza entrare in schermate lunghe.</p>
+        </div>
+        <div class="setup-grid">
+          <label>Settore
+            <select id="setupBusinessType">
+              <option value="bar">Bar / pub</option>
+              <option value="restaurant">Ristorante</option>
+              <option value="retail">Negozio</option>
+              <option value="beauty">Beauty / estetica</option>
+              <option value="fitness">Palestra / fitness</option>
+              <option value="generic">Altro</option>
+            </select>
+          </label>
+          <label>Telefono
+            <input id="setupPhone" type="text" placeholder="Telefono attività">
+          </label>
+          <label>Indirizzo
+            <input id="setupAddress" type="text" placeholder="Indirizzo negozio">
+          </label>
+          <label>Logo URL
+            <input id="setupLogoUrl" type="url" placeholder="https://...">
+          </label>
+          <label>Colore 1
+            <input id="setupPrimaryColor" type="color" value="#667eea">
+          </label>
+          <label>Colore 2
+            <input id="setupSecondaryColor" type="color" value="#764ba2">
+          </label>
+        </div>
+        <div class="setup-actions">
+          <button id="saveSetupBtn" type="button" class="primary">Salva pagina e crea campagna</button>
+          <button type="button" class="ghost" data-quick-tab="composer">Vai alle campagne guidate</button>
+        </div>
+      </section>
+
       <section class="operation-dashboard">
         <article class="operation-card featured">
           <div>
@@ -471,6 +510,15 @@
             <h3>Dati negozio</h3>
             <label for="profileName">Nome visualizzato</label>
             <input id="profileName" type="text" required>
+            <label for="profileBusinessType">Settore attività</label>
+            <select id="profileBusinessType">
+              <option value="bar">Bar / pub</option>
+              <option value="restaurant">Ristorante</option>
+              <option value="retail">Negozio</option>
+              <option value="beauty">Beauty / estetica</option>
+              <option value="fitness">Palestra / fitness</option>
+              <option value="generic">Altro</option>
+            </select>
             <div class="form-row two">
               <div>
                 <label for="profilePhone">Telefono</label>
