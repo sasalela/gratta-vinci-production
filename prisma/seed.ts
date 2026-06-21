@@ -1,10 +1,12 @@
 import { PrismaClient } from '@prisma/client';
-import { createHash } from 'crypto';
+import { randomBytes, scryptSync } from 'crypto';
 
 const prisma = new PrismaClient();
 
 function hashPassword(password: string): string {
-  return createHash('sha256').update(password).digest('hex');
+  const salt = randomBytes(16).toString('hex');
+  const derived = scryptSync(password, salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
 }
 
 async function main() {

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
-import { createHash } from 'crypto';
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/db';
 
@@ -181,8 +181,104 @@ type CustomerField = z.infer<typeof CustomerFieldSchema>;
 // UTILITIES
 // ==========================================
 
+function base64UrlEncode(value: Buffer | string): string {
+  return (typeof value === 'string' ? Buffer.from(value) : value).toString('base64url');
+}
+
+function base64UrlDecode(value: string): Buffer {
+  return Buffer.from(value, 'base64url');
+}
+
+function getAuthSecret(): string {
+  const secret = process.env.JWT_SECRET || process.env.AUTH_SECRET || process.env.ADMIN_PASSWORD;
+  if (!secret || secret.length < 16) {
+    throw new Error('JWT_SECRET or AUTH_SECRET must be configured with at least 16 characters.');
+  }
+  return secret;
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(
+    leftBuffer as unknown as Uint8Array,
+    rightBuffer as unknown as Uint8Array
+  );
+}
+
 function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString('hex');
+  const derived = scryptSync(password, salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+}
+
+function legacyHashPassword(password: string): string {
   return createHash('sha256').update(password).digest('hex');
+}
+
+function verifyPassword(password: string, storedHash: string): boolean {
+  if (storedHash.startsWith('scrypt$')) {
+    const [, salt, expectedHash] = storedHash.split('$');
+    if (!salt || !expectedHash) return false;
+    const actualHash = scryptSync(password, salt, 64).toString('hex');
+    return safeEqual(actualHash, expectedHash);
+  }
+
+  return safeEqual(legacyHashPassword(password), storedHash);
+}
+
+function shouldUpgradePasswordHash(storedHash: string): boolean {
+  return !storedHash.startsWith('scrypt$');
+}
+
+type AuthTokenPayload = {
+  sub: string;
+  role: string;
+  storeId?: string | null;
+  partnerId?: string | null;
+  exp: number;
+};
+
+function signToken(payload: Omit<AuthTokenPayload, 'exp'>, ttlSeconds = 60 * 60 * 8): string {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const body: AuthTokenPayload = {
+    ...payload,
+    exp: Math.floor(Date.now() / 1000) + ttlSeconds
+  };
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedBody = base64UrlEncode(JSON.stringify(body));
+  const signature = createHmac('sha256', getAuthSecret())
+    .update(`${encodedHeader}.${encodedBody}`)
+    .digest('base64url');
+  return `${encodedHeader}.${encodedBody}.${signature}`;
+}
+
+function verifyToken(token: string | null): AuthTokenPayload | null {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+
+  const [encodedHeader, encodedBody, signature] = parts;
+  const expectedSignature = createHmac('sha256', getAuthSecret())
+    .update(`${encodedHeader}.${encodedBody}`)
+    .digest('base64url');
+
+  if (!safeEqual(signature, expectedSignature)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(encodedBody).toString('utf8')) as AuthTokenPayload;
+    if (!payload.sub || !payload.role || !payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 function generateVoucherCode(): string {
@@ -238,14 +334,13 @@ function getClientIp(req: VercelRequest): string {
   return 'unknown';
 }
 
-async function getCurrentUser(token: string | null) {
-  if (!token || !token.startsWith('mock-token-')) {
+async function getCurrentUser(payload: AuthTokenPayload | null) {
+  if (!payload || payload.role === 'super_admin') {
     return null;
   }
 
-  const userId = token.replace('mock-token-', '');
   return prisma.user.findFirst({
-    where: { id: userId, active: true }
+    where: { id: payload.sub, active: true }
   });
 }
 
@@ -574,35 +669,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const { email, password } = validation.data;
-      const hashedPassword = hashPassword(password);
-      const adminEmail = process.env.ADMIN_EMAIL || 'admin@grattavinci.it';
-      const adminPassword = hashPassword(process.env.ADMIN_PASSWORD || 'admin123');
+      const normalizedEmail = email.toLowerCase().trim();
+      const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+      const adminPassword = process.env.ADMIN_PASSWORD;
 
-      if (email === adminEmail && hashedPassword === adminPassword) {
+      if (
+        adminEmail &&
+        adminPassword &&
+        normalizedEmail === adminEmail &&
+        safeEqual(password, adminPassword)
+      ) {
         return res.json({
           success: true,
           data: {
-            token: 'mock-super-admin-token',
+            token: signToken({ sub: 'super_admin', role: 'super_admin' }),
             user: { email: adminEmail, role: 'super_admin' }
           }
         });
       }
 
       const user = await prisma.user.findFirst({
-        where: { email, passwordHash: hashedPassword, active: true }
+        where: { email: normalizedEmail, active: true }
       });
 
-      if (!user) {
+      if (!user || !verifyPassword(password, user.passwordHash)) {
         return res.status(401).json({
           success: false,
           error: 'Invalid credentials'
         });
       }
 
+      if (shouldUpgradePasswordHash(user.passwordHash)) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { passwordHash: hashPassword(password) }
+        });
+      }
+
       return res.json({
         success: true,
         data: {
-          token: `mock-token-${user.id}`,
+          token: signToken({
+            sub: user.id,
+            role: user.role,
+            storeId: user.storeId,
+            partnerId: user.partnerId
+          }),
           user: {
             id: user.id,
             email: user.email,
@@ -688,7 +800,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(201).json({
         success: true,
         data: {
-          token: `mock-token-${created.user.id}`,
+          token: signToken({
+            sub: created.user.id,
+            role: created.user.role,
+            storeId: created.user.storeId,
+            partnerId: created.user.partnerId
+          }),
           trialDays,
           store: created.store,
           user: {
@@ -982,8 +1099,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const isAdmin = token.includes('super-admin');
-    const currentUser = await getCurrentUser(token);
+    const authPayload = verifyToken(token);
+    const isAdmin = authPayload?.role === 'super_admin';
+    const currentUser = await getCurrentUser(authPayload);
     const ADMIN_LIST_LIMIT = 100;
 
     if (path.startsWith('/api/store/')) {
