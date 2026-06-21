@@ -125,6 +125,69 @@ function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
   return y;
 }
 
+function wrapTextLines(ctx, text, maxWidth, maxLines) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+
+  for (const word of words) {
+    const testLine = line ? `${line} ${word}` : word;
+    if (ctx.measureText(testLine).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+      if (maxLines && lines.length === maxLines) break;
+    } else {
+      line = testLine;
+    }
+  }
+
+  if (line && (!maxLines || lines.length < maxLines)) {
+    lines.push(line);
+  }
+
+  return lines;
+}
+
+function drawTextBlock(ctx, options) {
+  const {
+    text,
+    x,
+    y,
+    maxWidth,
+    maxHeight,
+    startSize,
+    minSize,
+    weight,
+    color,
+    maxLines,
+    lineRatio = 1.18
+  } = options;
+  let size = startSize;
+  let lines = [];
+  let lineHeight = 0;
+
+  do {
+    ctx.font = `${weight} ${size}px Arial`;
+    lines = wrapTextLines(ctx, text, maxWidth, maxLines);
+    lineHeight = Math.round(size * lineRatio);
+    if (lines.length * lineHeight <= maxHeight) break;
+    size -= 2;
+  } while (size > minSize);
+
+  ctx.font = `${weight} ${size}px Arial`;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  lineHeight = Math.round(size * lineRatio);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    ctx.fillText(lines[index], x, y + index * lineHeight);
+  }
+
+  ctx.textBaseline = 'alphabetic';
+  return y + lines.length * lineHeight;
+}
+
 function fitText(ctx, text, maxWidth, startSize, minSize, weight = 900) {
   let size = startSize;
   do {
@@ -197,15 +260,19 @@ async function renderCanvas(formatKey = formatSelect.value) {
   ctx.fillStyle = 'rgba(255,255,255,0.94)';
   ctx.fill();
 
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#172033';
-
   const isWide = canvas.width > canvas.height;
   const isSquare = Math.abs(canvas.width - canvas.height) < minSide * 0.05;
   const contentWidth = card.w - pad * 1.3;
-  const logoSize = Math.round(minSide * (isWide ? 0.085 : isSquare ? 0.09 : 0.105));
+  const centerX = canvas.width / 2;
+  const qrSize = Math.round(minSide * (isWide ? 0.26 : isSquare ? 0.26 : 0.3));
+  const qrCenterY = card.y + card.h * (isWide ? 0.64 : isSquare ? 0.67 : 0.7);
+  const qrY = qrCenterY - qrSize / 2;
+  const upperContentBottom = qrY - Math.round(minSide * 0.05);
+  const logoSize = Math.round(minSide * (isWide ? 0.075 : isSquare ? 0.08 : 0.09));
   const logoX = canvas.width / 2 - logoSize / 2;
-  const logoY = card.y + pad * 0.58;
+  const logoY = card.y + card.h * 0.06;
+  const topAvailableHeight = upperContentBottom - logoY;
+  const topScale = Math.min(1, Math.max(0.72, topAvailableHeight / (minSide * (isWide ? 0.44 : 0.5))));
 
   if (state.store.logoUrl) {
     try {
@@ -222,64 +289,73 @@ async function renderCanvas(formatKey = formatSelect.value) {
     drawInitialLogo(ctx, logoX, logoY, logoSize, primary);
   }
 
-  const storeFont = Math.round(minSide * (isWide ? 0.034 : 0.032));
-  ctx.font = `800 ${storeFont}px Arial`;
-  ctx.fillStyle = primary;
-  ctx.fillText(state.store.name, canvas.width / 2, logoY + logoSize + storeFont * 1.15);
+  const storeFont = Math.round(minSide * (isWide ? 0.026 : 0.028) * topScale);
+  let cursorY = logoY + logoSize + storeFont * 0.55;
+  cursorY = drawTextBlock(ctx, {
+    text: state.store.name,
+    x: centerX,
+    y: cursorY,
+    maxWidth: contentWidth * 0.78,
+    maxHeight: storeFont * 1.35,
+    startSize: storeFont,
+    minSize: Math.round(storeFont * 0.72),
+    weight: 800,
+    color: primary,
+    maxLines: 1,
+    lineRatio: 1.15
+  });
 
-  ctx.fillStyle = '#172033';
   const headline = headlineInput.value || 'Inquadra e vinci';
-  const titleSize = fitText(
-    ctx,
-    headline,
-    contentWidth,
-    Math.round(minSide * (isWide ? 0.075 : isSquare ? 0.072 : 0.085)),
-    Math.round(minSide * 0.045),
-    900
-  );
-  ctx.font = `900 ${titleSize}px Arial`;
-  const titleY = logoY + logoSize + storeFont * 2.2;
-  const afterTitleY = drawWrappedText(
-    ctx,
-    headline,
-    canvas.width / 2,
-    titleY,
-    contentWidth,
-    Math.round(titleSize * 1.12),
-    2
-  );
+  const titleSize = Math.round(minSide * (isWide ? 0.063 : isSquare ? 0.064 : 0.072));
+  cursorY += Math.round(minSide * 0.025 * topScale);
+  cursorY = drawTextBlock(ctx, {
+    text: headline,
+    x: centerX,
+    y: cursorY,
+    maxWidth: contentWidth * 0.9,
+    maxHeight: titleSize * 2.35,
+    startSize: Math.round(titleSize * topScale),
+    minSize: Math.round(minSide * 0.034),
+    weight: 900,
+    color: '#172033',
+    maxLines: 2,
+    lineRatio: 1.08
+  });
 
-  const prizeSize = Math.round(minSide * (isWide ? 0.04 : isSquare ? 0.038 : 0.045));
-  ctx.font = `800 ${prizeSize}px Arial`;
-  ctx.fillStyle = secondary;
+  const prizeSize = Math.round(minSide * (isWide ? 0.034 : isSquare ? 0.036 : 0.04) * topScale);
   const prizeText = mainPrize ? `${mainPrize.emoji || ''} ${mainPrize.name}`.trim() : campaign.name;
-  const afterPrizeY = drawWrappedText(
-    ctx,
-    prizeText,
-    canvas.width / 2,
-    afterTitleY + prizeSize * 0.75,
-    contentWidth * 0.9,
-    Math.round(prizeSize * 1.22),
-    2
-  );
+  cursorY += Math.round(minSide * 0.022 * topScale);
+  cursorY = drawTextBlock(ctx, {
+    text: prizeText,
+    x: centerX,
+    y: cursorY,
+    maxWidth: contentWidth * 0.84,
+    maxHeight: prizeSize * 2.3,
+    startSize: prizeSize,
+    minSize: Math.round(minSide * 0.026),
+    weight: 800,
+    color: secondary,
+    maxLines: 2,
+    lineRatio: 1.15
+  });
 
-  const bodySize = Math.round(minSide * (isWide ? 0.028 : isSquare ? 0.026 : 0.03));
-  ctx.font = `500 ${bodySize}px Arial`;
-  ctx.fillStyle = '#4b5563';
-  drawWrappedText(
-    ctx,
-    subtitleInput.value,
-    canvas.width / 2,
-    afterPrizeY + bodySize * 1.1,
-    contentWidth * 0.78,
-    Math.round(bodySize * 1.55),
-    isWide ? 2 : 3
-  );
+  const bodySize = Math.round(minSide * (isWide ? 0.023 : isSquare ? 0.024 : 0.027) * topScale);
+  cursorY += Math.round(minSide * 0.022 * topScale);
+  drawTextBlock(ctx, {
+    text: subtitleInput.value,
+    x: centerX,
+    y: cursorY,
+    maxWidth: contentWidth * 0.72,
+    maxHeight: Math.max(bodySize * 1.45, upperContentBottom - cursorY),
+    startSize: bodySize,
+    minSize: Math.round(minSide * 0.018),
+    weight: 500,
+    color: '#4b5563',
+    maxLines: isWide ? 2 : 3,
+    lineRatio: 1.45
+  });
 
-  const qrSize = Math.round(minSide * (isWide ? 0.28 : isSquare ? 0.28 : 0.32));
   const qrX = canvas.width / 2 - qrSize / 2;
-  const qrCenterY = card.y + card.h * (isWide ? 0.64 : isSquare ? 0.66 : 0.69);
-  const qrY = qrCenterY - qrSize / 2;
 
   const qrPad = Math.round(minSide * 0.025);
   roundedRect(ctx, qrX - qrPad, qrY - qrPad, qrSize + qrPad * 2, qrSize + qrPad * 2, Math.round(minSide * 0.025));
@@ -287,15 +363,36 @@ async function renderCanvas(formatKey = formatSelect.value) {
   ctx.fill();
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
-  ctx.fillStyle = '#172033';
-  const ctaSize = Math.round(minSide * (isWide ? 0.035 : isSquare ? 0.034 : 0.04));
-  ctx.font = `900 ${ctaSize}px Arial`;
-  ctx.fillText(ctaInput.value || 'Inquadra il QR code', canvas.width / 2, qrY + qrSize + qrPad + ctaSize * 1.05);
+  const ctaSize = Math.round(minSide * (isWide ? 0.03 : isSquare ? 0.031 : 0.035));
+  const ctaY = qrY + qrSize + qrPad + ctaSize * 0.35;
+  drawTextBlock(ctx, {
+    text: ctaInput.value || 'Inquadra il QR code',
+    x: centerX,
+    y: ctaY,
+    maxWidth: contentWidth * 0.78,
+    maxHeight: ctaSize * 1.4,
+    startSize: ctaSize,
+    minSize: Math.round(minSide * 0.022),
+    weight: 900,
+    color: '#172033',
+    maxLines: 1,
+    lineRatio: 1.15
+  });
 
-  ctx.fillStyle = '#64748b';
   const footerSize = Math.round(minSide * (isWide ? 0.022 : 0.024));
-  ctx.font = `700 ${footerSize}px Arial`;
-  ctx.fillText(`Valido fino al ${formatDate(campaign.endDate)}`, canvas.width / 2, card.y + card.h - pad * 0.45);
+  drawTextBlock(ctx, {
+    text: `Valido fino al ${formatDate(campaign.endDate)}`,
+    x: centerX,
+    y: card.y + card.h - pad * 0.58,
+    maxWidth: contentWidth * 0.74,
+    maxHeight: footerSize * 1.25,
+    startSize: footerSize,
+    minSize: Math.round(minSide * 0.016),
+    weight: 700,
+    color: '#64748b',
+    maxLines: 1,
+    lineRatio: 1.1
+  });
 
   playUrlLabel.textContent = playUrl;
 }
