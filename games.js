@@ -7,13 +7,13 @@ window.PromoGames = (() => {
     },
     wheel: {
       title: 'Ruota della fortuna',
-      help: 'Premi il pulsante e guarda la ruota fermarsi sul tuo esito.',
+      help: 'Avvia la ruota e premi STOP quando ti senti fortunato. L’esito è già deciso, tu scegli il momento.',
       playLabel: 'Gira la ruota'
     },
     instant_reveal: {
-      title: 'Apri il regalo',
-      help: 'Tocca il regalo per scoprire se hai vinto. Puoi aprirlo una sola volta.',
-      playLabel: 'Apri il regalo'
+      title: 'Scatole misteriose',
+      help: 'Tre scatole, un solo esito. Scegli quella giusta e guardala aprirsi.',
+      playLabel: 'Scegli una scatola'
     }
   };
 
@@ -301,23 +301,31 @@ window.PromoGames = (() => {
       this.container = container;
       this.context = context;
       this.spinning = false;
+      this.stopping = false;
+      this.finished = false;
       this.rotation = 0;
+      this.spinSpeed = 0.34;
+      this.rafId = null;
+      this.handlers = {};
     }
 
     start() {
       this.container.innerHTML = `
         <div class="wheel-shell">
           <canvas id="wheelCanvas" width="360" height="360"></canvas>
+          <p id="wheelStatus" class="wheel-status">Premi per far girare la ruota.</p>
           <button id="spinWheelBtn" type="button" class="primary wheel-spin-btn">Gira la ruota</button>
         </div>
       `;
       this.canvas = this.container.querySelector('#wheelCanvas');
       this.ctx = this.canvas.getContext('2d');
       this.spinBtn = this.container.querySelector('#spinWheelBtn');
+      this.statusEl = this.container.querySelector('#wheelStatus');
       this.segments = this.buildSegments();
       this.targetRotation = this.getTargetRotation();
       this.drawWheel(this.rotation);
-      this.spinBtn.addEventListener('click', () => this.spin());
+      this.handlers.spinClick = () => this.handleSpinButton();
+      this.spinBtn.addEventListener('click', this.handlers.spinClick);
     }
 
     buildSegments() {
@@ -412,34 +420,93 @@ window.PromoGames = (() => {
       ctx.fillText('GIRA', center, center + 6);
     }
 
-    spin() {
-      if (this.spinning) return;
+    handleSpinButton() {
+      if (this.finished) return;
+      if (!this.spinning) {
+        this.startSpinning();
+        return;
+      }
+      if (!this.stopping) {
+        this.stopSpinning();
+      }
+    }
+
+    startSpinning() {
       this.spinning = true;
+      this.stopping = false;
+      this.spinBtn.textContent = 'STOP!';
+      this.spinBtn.classList.add('wheel-stop-btn');
+      this.statusEl.textContent = 'La ruota gira… premi STOP quando vuoi!';
+      this.lastFrame = performance.now();
+
+      const tick = (now) => {
+        if (!this.spinning || this.stopping) return;
+        const delta = Math.min(32, now - this.lastFrame);
+        this.lastFrame = now;
+        this.rotation += this.spinSpeed * (delta / 16);
+        this.drawWheel(this.rotation);
+        this.rafId = requestAnimationFrame(tick);
+      };
+
+      this.rafId = requestAnimationFrame(tick);
+    }
+
+    computeStopRotation(current, target, minTurns = 2.5) {
+      const twoPi = Math.PI * 2;
+      const normalize = (value) => ((value % twoPi) + twoPi) % twoPi;
+      const targetNorm = normalize(target);
+      let final = current + minTurns * twoPi;
+      let guard = 0;
+
+      while (guard < 1000) {
+        const delta = (targetNorm - normalize(final) + twoPi) % twoPi;
+        final += delta;
+        if (final - current >= minTurns * twoPi) break;
+        final += twoPi * 0.25;
+        guard += 1;
+      }
+
+      return final;
+    }
+
+    stopSpinning() {
+      this.stopping = true;
       this.spinBtn.disabled = true;
-      this.spinBtn.textContent = 'La ruota gira...';
+      this.spinBtn.classList.remove('wheel-stop-btn');
+      this.spinBtn.textContent = 'Si ferma…';
+      this.statusEl.textContent = 'Stai fermando la ruota…';
 
       const startRotation = this.rotation;
-      const extraTurns = 6;
-      const finalRotation = this.targetRotation + extraTurns * Math.PI * 2;
-      const duration = 3200;
+      const finalRotation = this.computeStopRotation(startRotation, this.targetRotation);
+      const duration = 2400;
       const start = performance.now();
 
       const animate = (now) => {
         const progress = Math.min((now - start) / duration, 1);
-        const eased = 1 - Math.pow(1 - progress, 3);
+        const eased = 1 - Math.pow(1 - progress, 4);
         this.rotation = startRotation + (finalRotation - startRotation) * eased;
         this.drawWheel(this.rotation);
+
         if (progress < 1) {
-          requestAnimationFrame(animate);
+          this.rafId = requestAnimationFrame(animate);
           return;
         }
+
+        this.finished = true;
+        this.spinning = false;
+        this.statusEl.textContent = 'La ruota si è fermata sul tuo esito.';
+        this.spinBtn.textContent = 'Esito sbloccato';
         this.context.onReveal();
       };
 
-      requestAnimationFrame(animate);
+      this.rafId = requestAnimationFrame(animate);
     }
 
     destroy() {
+      if (this.rafId) cancelAnimationFrame(this.rafId);
+      if (this.spinBtn && this.handlers.spinClick) {
+        this.spinBtn.removeEventListener('click', this.handlers.spinClick);
+      }
       this.container.innerHTML = '';
     }
   }
@@ -449,46 +516,107 @@ window.PromoGames = (() => {
       this.container = container;
       this.context = context;
       this.opened = false;
+      this.boxCount = 3;
     }
 
     start() {
       const primary = this.context.campaignConfig?.store?.primaryColor || '#667eea';
       const secondary = this.context.campaignConfig?.store?.secondaryColor || '#764ba2';
+
       this.container.innerHTML = `
-        <div class="gift-shell">
-          <button id="giftBox" type="button" class="gift-box" style="--gift-primary:${primary};--gift-secondary:${secondary}">
-            <span class="gift-lid">🎁</span>
-            <span class="gift-body">Tocca per aprire</span>
-          </button>
-          <div id="giftResult" class="gift-result hidden"></div>
+        <div class="mystery-shell" style="--gift-primary:${primary};--gift-secondary:${secondary}">
+          <p class="mystery-prompt">Solo una scatola contiene il tuo esito. Quale scegli?</p>
+          <div class="mystery-grid" id="mysteryGrid">
+            ${Array.from({ length: this.boxCount }, (_, index) => `
+              <button type="button" class="mystery-box" data-box-index="${index}" aria-label="Scatola ${index + 1}">
+                <span class="mystery-box-top">?</span>
+                <span class="mystery-box-label">Scatola ${index + 1}</span>
+              </button>
+            `).join('')}
+          </div>
+          <div id="mysteryReveal" class="mystery-reveal hidden"></div>
+          <div id="mysteryConfetti" class="mystery-confetti" aria-hidden="true"></div>
         </div>
       `;
-      this.giftBox = this.container.querySelector('#giftBox');
-      this.giftResult = this.container.querySelector('#giftResult');
-      this.giftBox.addEventListener('click', () => this.openGift());
+
+      this.winningIndex = winningIndex;
+      this.grid = this.container.querySelector('#mysteryGrid');
+      this.revealEl = this.container.querySelector('#mysteryReveal');
+      this.confettiEl = this.container.querySelector('#mysteryConfetti');
+      this.handlers = {
+        boxClick: (event) => {
+          const button = event.target.closest('.mystery-box');
+          if (!button) return;
+          this.openBox(Number(button.dataset.boxIndex));
+        }
+      };
+      this.grid.addEventListener('click', this.handlers.boxClick);
     }
 
-    openGift() {
+    spawnConfetti() {
+      const colors = ['#667eea', '#764ba2', '#22c55e', '#f59e0b', '#ef4444', '#ffffff'];
+      for (let i = 0; i < 28; i += 1) {
+        const piece = document.createElement('span');
+        piece.className = 'mystery-confetti-piece';
+        piece.style.left = `${Math.random() * 100}%`;
+        piece.style.background = colors[i % colors.length];
+        piece.style.animationDelay = `${Math.random() * 0.35}s`;
+        piece.style.setProperty('--drift', `${-40 + Math.random() * 80}px`);
+        this.confettiEl.appendChild(piece);
+      }
+    }
+
+    openBox(selectedIndex) {
       if (this.opened) return;
       this.opened = true;
-      this.giftBox.classList.add('opened');
-      this.giftBox.disabled = true;
 
       const { gameData, campaignConfig } = this.context;
       const text = gameData.won
         ? `${gameData.prize.emoji || ''} ${gameData.prize.name}`.trim()
         : campaignConfig?.loseMessage || gameData.loseMessage;
+      const boxes = [...this.grid.querySelectorAll('.mystery-box')];
 
-      this.giftResult.innerHTML = `
-        <p class="eyebrow">${gameData.won ? 'Hai vinto' : 'Esito giocata'}</p>
-        <strong>${text}</strong>
-      `;
-      this.giftResult.classList.remove('hidden');
+      boxes.forEach((box, index) => {
+        box.disabled = true;
+        if (index === selectedIndex) {
+          box.classList.add('selected', 'opening');
+        } else {
+          box.classList.add('dimmed');
+        }
+      });
 
-      setTimeout(() => this.context.onReveal(), 700);
+      setTimeout(() => {
+        boxes.forEach((box, index) => {
+          if (index === selectedIndex) {
+            box.classList.add('opened');
+            box.innerHTML = `
+              <span class="mystery-box-top">${gameData.won ? (gameData.prize.emoji || '✨') : '💨'}</span>
+              <span class="mystery-box-label">${gameData.won ? 'Trovato!' : 'Vuota'}</span>
+            `;
+          } else {
+            box.classList.add('opened', 'empty');
+            box.innerHTML = `
+              <span class="mystery-box-top">📦</span>
+              <span class="mystery-box-label">Vuota</span>
+            `;
+          }
+        });
+
+        if (gameData.won) this.spawnConfetti();
+
+        this.revealEl.innerHTML = `
+          <p class="eyebrow">${gameData.won ? 'Hai scelto quella giusta' : 'Esito giocata'}</p>
+          <strong>${text}</strong>
+        `;
+        this.revealEl.classList.remove('hidden');
+        setTimeout(() => this.context.onReveal(), gameData.won ? 1200 : 800);
+      }, 650);
     }
 
     destroy() {
+      if (this.grid && this.handlers?.boxClick) {
+        this.grid.removeEventListener('click', this.handlers.boxClick);
+      }
       this.container.innerHTML = '';
     }
   }

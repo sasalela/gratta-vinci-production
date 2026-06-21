@@ -638,14 +638,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           {
             id: 'wheel',
             name: 'Ruota della fortuna',
-            description: 'Il giocatore fa girare la ruota e scopre il risultato.',
+            description: 'Il giocatore fa girare la ruota e la ferma con un click sul momento che preferisce.',
             playLabel: 'Gira la ruota'
           },
           {
             id: 'instant_reveal',
-            name: 'Apri il regalo',
-            description: 'Il giocatore apre un regalo virtuale per vedere se ha vinto.',
-            playLabel: 'Apri il regalo'
+            name: 'Scatole misteriose',
+            description: 'Il giocatore sceglie una tra tre scatole e scopre l’esito con animazione.',
+            playLabel: 'Scegli una scatola'
           }
         ]
       });

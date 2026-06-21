@@ -83,7 +83,7 @@ const state = {
 const GAME_TYPE_LABELS = {
   scratch_card: 'Gratta e vinci',
   wheel: 'Ruota della fortuna',
-  instant_reveal: 'Apri il regalo'
+  instant_reveal: 'Scatole misteriose'
 };
 
 function getGameTypeLabel(gameType) {
