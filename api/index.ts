@@ -136,6 +136,37 @@ const RedeemVoucherSchema = z.object({
   notes: z.string().optional()
 });
 
+const SubscriptionRequestSchema = z.object({
+  planId: z.enum(['basic', 'pro'])
+});
+
+const SUBSCRIPTION_PLANS = [
+  {
+    id: 'trial',
+    name: 'Trial',
+    priceLabel: 'Gratis',
+    periodLabel: '14 giorni',
+    description: 'Prova completa della piattaforma con un negozio e campagne attive.',
+    features: ['1 negozio', 'Campagne illimitate', 'QR e voucher', 'Materiali promo']
+  },
+  {
+    id: 'basic',
+    name: 'Basic',
+    priceLabel: '€29/mese',
+    periodLabel: 'Mensile',
+    description: 'Per attività singole che vogliono giocare in autonomia.',
+    features: ['1 negozio', 'Supporto email', 'Statistiche campagne', 'Validazione voucher']
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    priceLabel: '€59/mese',
+    periodLabel: 'Mensile',
+    description: 'Per negozi con più campagne e materiali promozionali frequenti.',
+    features: ['Tutto del Basic', 'Priorità assistenza', 'Brand avanzato', 'Alert operativi']
+  }
+] as const;
+
 type Prize = {
   name: string;
   emoji: string;
@@ -257,6 +288,77 @@ function buildSessionKey(params: {
   }
 
   return `${params.campaignId}_${identity}`;
+}
+
+function getStoreSubscriptionStatus(store: { active: boolean; subscriptionExpiresAt: Date | null }) {
+  if (!store.active) {
+    return {
+      operational: false,
+      status: 'inactive' as const,
+      currentPlan: 'trial' as const,
+      daysLeft: null as number | null,
+      message: 'Negozio disattivato. Contatta l\'amministratore della piattaforma.'
+    };
+  }
+
+  if (!store.subscriptionExpiresAt) {
+    return {
+      operational: true,
+      status: 'active' as const,
+      currentPlan: 'pro' as const,
+      daysLeft: null as number | null,
+      message: 'Abbonamento attivo senza scadenza.'
+    };
+  }
+
+  const daysLeft = Math.ceil((store.subscriptionExpiresAt.getTime() - Date.now()) / 86400000);
+  if (daysLeft < 0) {
+    return {
+      operational: false,
+      status: 'expired' as const,
+      currentPlan: 'trial' as const,
+      daysLeft,
+      message: 'Abbonamento scaduto. Attiva un piano per creare o modificare campagne.'
+    };
+  }
+
+  if (daysLeft <= 7) {
+    return {
+      operational: true,
+      status: 'expiring' as const,
+      currentPlan: 'trial' as const,
+      daysLeft,
+      message: `Trial in scadenza tra ${daysLeft} giorni.`
+    };
+  }
+
+  return {
+    operational: true,
+    status: 'trial' as const,
+    currentPlan: 'trial' as const,
+    daysLeft,
+    message: 'Trial attivo. Puoi creare campagne e materiali promozionali.'
+  };
+}
+
+async function assertStoreCanManageCampaigns(storeId: string, res: VercelResponse) {
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store) {
+    res.status(404).json({ success: false, error: 'Negozio non trovato.' });
+    return null;
+  }
+
+  const subscription = getStoreSubscriptionStatus(store);
+  if (!subscription.operational) {
+    res.status(403).json({
+      success: false,
+      error: subscription.message,
+      subscription
+    });
+    return null;
+  }
+
+  return store;
 }
 
 async function createPrizesExhaustedAlert(storeId: string, campaignId: string, campaignName: string) {
@@ -780,6 +882,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           where: { id: storeId }
         });
 
+        if (!store) {
+          return res.status(404).json({ success: false, error: 'Negozio non trovato.' });
+        }
+
+        const subscription = getStoreSubscriptionStatus(store);
+
         return res.json({
           success: true,
           data: {
@@ -789,7 +897,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               name: currentUser.name,
               role: currentUser.role
             },
-            store
+            store,
+            subscription
+          }
+        });
+      }
+
+      if (path === '/api/store/subscription' && method === 'GET') {
+        const store = await prisma.store.findUnique({ where: { id: storeId } });
+        if (!store) {
+          return res.status(404).json({ success: false, error: 'Negozio non trovato.' });
+        }
+
+        const subscription = getStoreSubscriptionStatus(store);
+        return res.json({
+          success: true,
+          data: {
+            ...subscription,
+            subscriptionExpiresAt: store.subscriptionExpiresAt,
+            plans: SUBSCRIPTION_PLANS,
+            paymentEnabled: false
+          }
+        });
+      }
+
+      if (path === '/api/store/subscription/request' && method === 'POST') {
+        const validation = SubscriptionRequestSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            success: false,
+            errors: validation.error.errors
+          });
+        }
+
+        const store = await prisma.store.findUnique({ where: { id: storeId } });
+        if (!store) {
+          return res.status(404).json({ success: false, error: 'Negozio non trovato.' });
+        }
+
+        const plan = SUBSCRIPTION_PLANS.find((item) => item.id === validation.data.planId);
+        if (!plan) {
+          return res.status(400).json({ success: false, error: 'Piano non valido.' });
+        }
+
+        await prisma.alert.create({
+          data: {
+            storeId,
+            type: 'upgrade_request',
+            message: `${store.name} ha richiesto attivazione piano ${plan.name} (${plan.priceLabel}).`
+          }
+        });
+
+        return res.json({
+          success: true,
+          data: {
+            message: `Richiesta inviata per il piano ${plan.name}. Ti contatteremo per l'attivazione.`
           }
         });
       }
@@ -865,6 +1027,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (path === '/api/store/campaigns' && method === 'POST') {
+        if (!(await assertStoreCanManageCampaigns(storeId, res))) {
+          return;
+        }
+
         const validation = StoreCampaignSchema.safeParse(req.body);
         if (!validation.success) {
           return res.status(400).json({ success: false, errors: validation.error.errors });
@@ -900,6 +1066,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const campaignId = parts[4];
 
         if (parts.length === 5) {
+          if (!(await assertStoreCanManageCampaigns(storeId, res))) {
+            return;
+          }
+
           const validation = StoreCampaignSchema.safeParse(req.body);
           if (!validation.success) {
             return res.status(400).json({ success: false, errors: validation.error.errors });
@@ -938,6 +1108,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (path.match(/^\/api\/store\/campaigns\/[^/]+\/prizes$/) && method === 'POST') {
+        if (!(await assertStoreCanManageCampaigns(storeId, res))) {
+          return;
+        }
+
         const campaignId = path.split('/')[4];
         const validation = PrizeSchema.safeParse(req.body);
         if (!validation.success) {
@@ -961,6 +1135,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (path.match(/^\/api\/store\/campaigns\/[^/]+\/prizes\/[^/]+$/) && method === 'PUT') {
+        if (!(await assertStoreCanManageCampaigns(storeId, res))) {
+          return;
+        }
+
         const parts = path.split('/');
         const campaignId = parts[4];
         const prizeId = parts[6];

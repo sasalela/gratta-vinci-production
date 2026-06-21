@@ -62,6 +62,9 @@ const subscriptionBanner = document.getElementById('subscriptionBanner');
 const subscriptionTitle = document.getElementById('subscriptionTitle');
 const subscriptionText = document.getElementById('subscriptionText');
 const subscriptionDays = document.getElementById('subscriptionDays');
+const openBillingBtn = document.getElementById('openBillingBtn');
+const billingStatus = document.getElementById('billingStatus');
+const billingPlans = document.getElementById('billingPlans');
 
 const state = {
   campaigns: [],
@@ -71,6 +74,8 @@ const state = {
   editingCampaignId: null,
   editingPrizeId: null,
   store: null,
+  subscription: null,
+  billingPlans: [],
   scannerStream: null,
   scannerFrame: null
 };
@@ -106,41 +111,45 @@ function formatDisplayDate(value) {
   return new Date(value).toLocaleDateString('it-IT');
 }
 
-function getSubscriptionInfo(store) {
-  if (!store?.active) {
+function getSubscriptionInfo(store, subscription) {
+  if (subscription?.status === 'inactive' || store?.active === false) {
     return {
       status: 'danger',
       title: 'Account disattivato',
-      text: 'Contatta l’amministratore della piattaforma per riattivare il negozio.',
+      text: subscription?.message || 'Contatta l’amministratore della piattaforma per riattivare il negozio.',
       daysLabel: 'Bloccato'
     };
   }
 
-  if (!store.subscriptionExpiresAt) {
-    return {
-      status: 'success',
-      title: 'Abbonamento attivo',
-      text: 'Il negozio non ha una scadenza impostata.',
-      daysLabel: 'Attivo'
-    };
-  }
-
-  const expiresAt = new Date(store.subscriptionExpiresAt);
-  const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000);
-  if (daysLeft < 0) {
+  if (subscription?.status === 'expired') {
     return {
       status: 'danger',
       title: 'Trial scaduto',
-      text: `Scaduto il ${formatDisplayDate(store.subscriptionExpiresAt)}. Le campagne pubbliche non sono utilizzabili finché non viene rinnovato.`,
+      text: subscription.message || `Scaduto il ${formatDisplayDate(store.subscriptionExpiresAt)}. Attiva un piano per continuare.`,
       daysLabel: 'Scaduto'
     };
   }
 
-  if (daysLeft <= 7) {
+  if (!store?.subscriptionExpiresAt && subscription?.status === 'active') {
+    return {
+      status: 'success',
+      title: 'Abbonamento attivo',
+      text: subscription.message || 'Il negozio non ha una scadenza impostata.',
+      daysLabel: 'Attivo'
+    };
+  }
+
+  const daysLeft = subscription?.daysLeft ?? (
+    store?.subscriptionExpiresAt
+      ? Math.ceil((new Date(store.subscriptionExpiresAt).getTime() - Date.now()) / 86400000)
+      : null
+  );
+
+  if (subscription?.status === 'expiring' || (typeof daysLeft === 'number' && daysLeft <= 7 && daysLeft >= 0)) {
     return {
       status: 'warning',
       title: 'Trial in scadenza',
-      text: `Scade il ${formatDisplayDate(store.subscriptionExpiresAt)}. Mancano pochi giorni per attivare un piano.`,
+      text: subscription?.message || `Scade il ${formatDisplayDate(store.subscriptionExpiresAt)}. Attiva un piano per non interrompere le campagne.`,
       daysLabel: `${daysLeft} gg`
     };
   }
@@ -148,9 +157,20 @@ function getSubscriptionInfo(store) {
   return {
     status: 'success',
     title: 'Trial attivo',
-    text: `Scade il ${formatDisplayDate(store.subscriptionExpiresAt)}. Puoi creare campagne e materiali promozionali.`,
-    daysLabel: `${daysLeft} gg`
+    text: subscription?.message || `Scade il ${formatDisplayDate(store?.subscriptionExpiresAt)}. Puoi creare campagne e materiali promozionali.`,
+    daysLabel: typeof daysLeft === 'number' ? `${daysLeft} gg` : 'Attivo'
   };
+}
+
+function isStoreOperational() {
+  return Boolean(state.subscription?.operational);
+}
+
+function applyOperationalLocks() {
+  const locked = !isStoreOperational();
+  [newCampaignBtn, quickNewCampaignBtn, saveCampaignBtn, createPrizeBtn].forEach((button) => {
+    if (button) button.disabled = locked;
+  });
 }
 
 function slugify(value) {
@@ -306,15 +326,24 @@ async function showApp() {
 async function loadAll() {
   clearError(appError);
   try {
-    const [me, campaigns, participations, vouchers, alerts] = await Promise.all([
+    const [me, campaigns, participations, vouchers, alerts, billing] = await Promise.all([
       api('/api/store/me'),
       api('/api/store/campaigns'),
       api('/api/store/participations'),
       api('/api/store/vouchers'),
-      api('/api/store/alerts')
+      api('/api/store/alerts'),
+      api('/api/store/subscription')
     ]);
 
     state.store = me.store;
+    state.subscription = {
+      operational: billing.operational,
+      status: billing.status,
+      currentPlan: billing.currentPlan,
+      daysLeft: billing.daysLeft,
+      message: billing.message
+    };
+    state.billingPlans = billing.plans || [];
     state.campaigns = campaigns;
     state.participations = participations;
     state.vouchers = vouchers;
@@ -324,6 +353,8 @@ async function loadAll() {
     userLabel.textContent = ` — ${me.user.email}`;
     populateProfileForm(me.store);
     renderSubscriptionBanner();
+    applyOperationalLocks();
+    renderBillingSection();
     renderOperationalDashboard();
     renderStats();
     renderCampaigns(campaigns);
@@ -382,6 +413,15 @@ function renderOperationalDashboard() {
       tab: 'campaigns'
     });
   }
+  if (!isStoreOperational()) {
+    insights.unshift({
+      type: 'danger',
+      title: 'Abbonamento scaduto',
+      text: 'Non puoi creare nuove campagne finché non attivi un piano.',
+      action: 'Vai al piano',
+      tab: 'billing'
+    });
+  }
   if (!campaign) {
     insights.push({
       type: 'info',
@@ -411,11 +451,73 @@ function renderOperationalDashboard() {
 }
 
 function renderSubscriptionBanner() {
-  const info = getSubscriptionInfo(state.store);
+  const info = getSubscriptionInfo(state.store, state.subscription);
   subscriptionBanner.className = `subscription-banner ${info.status}`;
   subscriptionTitle.textContent = info.title;
   subscriptionText.textContent = info.text;
   subscriptionDays.textContent = info.daysLabel;
+  openBillingBtn.textContent = state.subscription?.status === 'expired' ? 'Attiva piano' : 'Gestisci piano';
+}
+
+function renderBillingSection() {
+  if (!state.subscription) {
+    billingStatus.innerHTML = '<p class="muted">Caricamento stato abbonamento...</p>';
+    billingPlans.innerHTML = '';
+    return;
+  }
+
+  const expiresLabel = state.store?.subscriptionExpiresAt
+    ? formatDisplayDate(state.store.subscriptionExpiresAt)
+    : 'Senza scadenza';
+  const operationalLabel = isStoreOperational() ? 'Operativo' : 'Limitato';
+
+  billingStatus.innerHTML = `
+    <p class="eyebrow">Stato attuale</p>
+    <h3>${escapeHtml(state.subscription.currentPlan === 'trial' ? 'Trial' : state.subscription.currentPlan === 'basic' ? 'Basic' : 'Pro')}</h3>
+    <p>${escapeHtml(state.subscription.message)}</p>
+    <div class="billing-meta">
+      <span><strong>Scadenza:</strong> ${escapeHtml(expiresLabel)}</span>
+      <span><strong>Accesso:</strong> ${escapeHtml(operationalLabel)}</span>
+    </div>
+  `;
+
+  const plans = state.billingPlans.length
+    ? state.billingPlans
+    : [
+        { id: 'trial', name: 'Trial', priceLabel: 'Gratis', periodLabel: '14 giorni', description: 'Prova completa.', features: ['1 negozio', 'Campagne', 'QR e voucher'] },
+        { id: 'basic', name: 'Basic', priceLabel: '€29/mese', periodLabel: 'Mensile', description: 'Per attività singole.', features: ['1 negozio', 'Supporto email', 'Statistiche'] },
+        { id: 'pro', name: 'Pro', priceLabel: '€59/mese', periodLabel: 'Mensile', description: 'Per uso intensivo.', features: ['Tutto del Basic', 'Priorità assistenza', 'Brand avanzato'] }
+      ];
+
+  billingPlans.innerHTML = plans.map((plan) => {
+    const isCurrent = plan.id === state.subscription.currentPlan;
+    const canRequest = !isCurrent && plan.id !== 'trial';
+    return `
+      <article class="plan-card ${isCurrent ? 'current' : ''}">
+        <p class="eyebrow">${escapeHtml(plan.periodLabel)}</p>
+        <h3>${escapeHtml(plan.name)}</h3>
+        <strong class="plan-price">${escapeHtml(plan.priceLabel)}</strong>
+        <p>${escapeHtml(plan.description)}</p>
+        <ul>${plan.features.map((feature) => `<li>${escapeHtml(feature)}</li>`).join('')}</ul>
+        ${isCurrent ? '<span class="plan-badge">Piano attuale</span>' : ''}
+        ${canRequest ? `<button type="button" class="primary full" data-plan-id="${escapeHtml(plan.id)}">Richiedi attivazione</button>` : ''}
+      </article>
+    `;
+  }).join('');
+}
+
+async function requestPlanUpgrade(planId) {
+  clearError(appError);
+  try {
+    const data = await api('/api/store/subscription/request', {
+      method: 'POST',
+      body: JSON.stringify({ planId })
+    });
+    showSuccess(data.message || 'Richiesta inviata.');
+    await loadAll();
+  } catch (error) {
+    setError(appError, error.message);
+  }
 }
 
 async function copyQuickLink() {
@@ -926,10 +1028,21 @@ function logout() {
 }
 
 function newCampaign() {
+  if (!isStoreOperational()) {
+    setError(appError, 'Abbonamento scaduto. Attiva un piano per creare nuove campagne.');
+    switchTab('billing');
+    return;
+  }
   resetCampaignForm();
   switchTab('editor');
 }
 
+openBillingBtn.addEventListener('click', () => switchTab('billing'));
+billingPlans.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-plan-id]');
+  if (!button) return;
+  requestPlanUpgrade(button.dataset.planId);
+});
 loginBtn.addEventListener('click', login);
 refreshBtn.addEventListener('click', loadAll);
 logoutBtn.addEventListener('click', logout);

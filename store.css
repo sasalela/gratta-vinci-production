@@ -151,6 +151,77 @@ small {
   color: #991b1b;
 }
 
+.subscription-banner .ghost.small {
+  margin-top: 12px;
+  padding: 8px 14px;
+}
+
+.billing-status h3 {
+  font-size: 1.6rem;
+  margin: 6px 0 10px;
+}
+
+.billing-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.billing-meta span {
+  color: #64748b;
+}
+
+.billing-note {
+  margin-top: 8px;
+}
+
+.plan-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.plan-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+}
+
+.plan-card.current {
+  border-color: #667eea;
+  box-shadow: 0 18px 44px rgba(102, 126, 234, 0.16);
+}
+
+.plan-price {
+  color: #172033;
+  font-size: 1.8rem;
+}
+
+.plan-card ul {
+  color: #64748b;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 8px 0 12px;
+}
+
+.plan-badge {
+  background: #eef2ff;
+  border-radius: 999px;
+  color: #4338ca;
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 8px 12px;
+  width: fit-content;
+}
+
 .operation-dashboard {
   display: grid;
   gap: 16px;
@@ -721,6 +792,7 @@ th {
   .stats-grid,
   .operation-dashboard,
   .profile-grid,
+  .plan-grid,
   .form-row.two {
     grid-template-columns: 1fr;
   }

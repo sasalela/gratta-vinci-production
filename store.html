@@ -50,6 +50,7 @@
           <p class="eyebrow">Abbonamento</p>
           <h2 id="subscriptionTitle">Trial attivo</h2>
           <p id="subscriptionText">Controllo stato abbonamento in corso.</p>
+          <button id="openBillingBtn" type="button" class="ghost small">Gestisci piano</button>
         </div>
         <strong id="subscriptionDays">—</strong>
       </section>
@@ -103,6 +104,7 @@
         <button class="tab" data-tab="materials">Materiali promo</button>
         <button class="tab" data-tab="vouchers">Voucher</button>
         <button class="tab" data-tab="players">Giocatori</button>
+        <button class="tab" data-tab="billing">Piano</button>
         <button class="tab" data-tab="profile">Profilo negozio</button>
       </nav>
 
@@ -305,6 +307,18 @@
         <div class="card">
           <div id="participationsTable" class="table-wrap"></div>
         </div>
+      </section>
+
+      <section id="tabBilling" class="tab-panel hidden">
+        <div class="section-heading">
+          <div>
+            <h2>Piano e abbonamento</h2>
+            <p class="muted">Controlla lo stato del trial, confronta i piani e richiedi l’attivazione.</p>
+          </div>
+        </div>
+        <div id="billingStatus" class="billing-status card"></div>
+        <div id="billingPlans" class="plan-grid"></div>
+        <p id="billingNote" class="muted billing-note">I pagamenti online arriveranno presto. Per ora l’attivazione avviene manualmente da admin o gestore.</p>
       </section>
 
       <section id="tabProfile" class="tab-panel hidden">
