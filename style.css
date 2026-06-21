@@ -275,9 +275,12 @@ canvas {
   display: grid;
   gap: 6px;
   justify-items: center;
+  margin-top: 0;
   min-height: 132px;
   padding: 18px 10px;
+  touch-action: manipulation;
   transition: transform 0.25s ease, opacity 0.35s ease, filter 0.35s ease;
+  width: 100%;
 }
 
 .mystery-box:hover:not(:disabled) {

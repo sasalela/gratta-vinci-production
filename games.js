@@ -539,18 +539,16 @@ window.PromoGames = (() => {
         </div>
       `;
 
-      this.winningIndex = winningIndex;
       this.grid = this.container.querySelector('#mysteryGrid');
       this.revealEl = this.container.querySelector('#mysteryReveal');
       this.confettiEl = this.container.querySelector('#mysteryConfetti');
-      this.handlers = {
-        boxClick: (event) => {
-          const button = event.target.closest('.mystery-box');
-          if (!button) return;
-          this.openBox(Number(button.dataset.boxIndex));
-        }
-      };
-      this.grid.addEventListener('click', this.handlers.boxClick);
+      this.boxButtons = [...this.container.querySelectorAll('.mystery-box')];
+      this.handlers = {};
+      this.boxButtons.forEach((button, index) => {
+        const handler = () => this.openBox(index);
+        this.handlers[`box${index}`] = handler;
+        button.addEventListener('click', handler);
+      });
     }
 
     spawnConfetti() {
@@ -614,8 +612,11 @@ window.PromoGames = (() => {
     }
 
     destroy() {
-      if (this.grid && this.handlers?.boxClick) {
-        this.grid.removeEventListener('click', this.handlers.boxClick);
+      if (this.boxButtons) {
+        this.boxButtons.forEach((button, index) => {
+          const handler = this.handlers?.[`box${index}`];
+          if (handler) button.removeEventListener('click', handler);
+        });
       }
       this.container.innerHTML = '';
     }
