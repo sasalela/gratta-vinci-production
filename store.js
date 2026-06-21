@@ -24,6 +24,12 @@ const composerResult = document.getElementById('composerResult');
 const composerPreviewBtn = document.getElementById('composerPreviewBtn');
 const composerApplyBtn = document.getElementById('composerApplyBtn');
 const composerResetBtn = document.getElementById('composerResetBtn');
+const composerBackBtn = document.getElementById('composerBackBtn');
+const composerNextBtn = document.getElementById('composerNextBtn');
+const composerProgress = document.getElementById('composerProgress');
+const composerInlineStatus = document.getElementById('composerInlineStatus');
+const composerCoachTitle = document.getElementById('composerCoachTitle');
+const composerCoachText = document.getElementById('composerCoachText');
 const campaignForm = document.getElementById('campaignForm');
 const saveCampaignBtn = document.getElementById('saveCampaignBtn');
 const createPrizeBtn = document.getElementById('createPrizeBtn');
@@ -83,8 +89,32 @@ const state = {
   billingPlans: [],
   scannerStream: null,
   scannerFrame: null,
-  composerPreview: null
+  composerPreview: null,
+  composerStep: 0
 };
+
+const COMPOSER_STEPS = [
+  {
+    title: 'Scegli il settore',
+    text: 'Partiamo dal tipo di attività per proporti premi realistici e testi coerenti.'
+  },
+  {
+    title: 'Definisci l’obiettivo',
+    text: 'Un weekend promo, una raccolta contatti o una visita in negozio richiedono meccaniche diverse.'
+  },
+  {
+    title: 'Imposta la logica premi',
+    text: 'Se vuoi velocità, scegli “Vinci sempre qualcosa”: è la configurazione più semplice per il cliente finale.'
+  },
+  {
+    title: 'Scegli l’esperienza',
+    text: 'La ruota è forte per più premi, il gratta è classico, le scatole sono rapide su mobile.'
+  },
+  {
+    title: 'Conferma e crea',
+    text: 'Controlla la preview: quando premi “Crea campagna” vedrai subito il link e potrai modificarla.'
+  }
+];
 
 const GAME_TYPE_LABELS = {
   scratch_card: 'Gratta e vinci',
@@ -350,9 +380,45 @@ function getComposerDraft() {
     durationDays: Number(document.getElementById('composerDurationDays').value || 7),
     discountHigh: Number(document.getElementById('composerDiscountHigh').value || 30),
     discountLow: Number(document.getElementById('composerDiscountLow').value || 10),
-    collectPhone: document.getElementById('composerCollectPhone').checked,
+    collectPhone: document.getElementById('composerCollectPhoneCheckbox').checked,
     campaignName: document.getElementById('composerCampaignName').value.trim()
   };
+}
+
+function setComposerValue(field, value) {
+  const input = document.getElementById(`composer${field[0].toUpperCase()}${field.slice(1)}`);
+  if (input) {
+    input.value = value;
+  }
+  renderComposerStep();
+}
+
+function updateComposerChoiceState() {
+  document.querySelectorAll('[data-composer-set]').forEach((button) => {
+    const field = button.dataset.composerSet;
+    const input = document.getElementById(`composer${field[0].toUpperCase()}${field.slice(1)}`);
+    button.classList.toggle('selected', input?.value === button.dataset.value);
+  });
+}
+
+function renderComposerStep() {
+  document.querySelectorAll('.composer-step').forEach((step) => {
+    step.classList.toggle('active', Number(step.dataset.composerStep) === state.composerStep);
+  });
+
+  composerProgress.innerHTML = COMPOSER_STEPS.map((step, index) => (
+    `<button type="button" class="${index === state.composerStep ? 'active' : ''}" data-composer-go-step="${index}">
+      <span>${index + 1}</span>${escapeHtml(step.title)}
+    </button>`
+  )).join('');
+
+  composerBackBtn.disabled = state.composerStep === 0;
+  composerNextBtn.classList.toggle('hidden', state.composerStep === COMPOSER_STEPS.length - 1);
+  composerPreviewBtn.classList.toggle('hidden', state.composerStep !== COMPOSER_STEPS.length - 1);
+  composerApplyBtn.classList.toggle('hidden', state.composerStep !== COMPOSER_STEPS.length - 1);
+  composerCoachTitle.textContent = COMPOSER_STEPS[state.composerStep].title;
+  composerCoachText.textContent = COMPOSER_STEPS[state.composerStep].text;
+  updateComposerChoiceState();
 }
 
 function resetComposer() {
@@ -361,11 +427,17 @@ function resetComposer() {
   document.getElementById('composerGoal').value = 'bring_customers';
   document.getElementById('composerRewardStyle').value = 'guaranteed_multi_prize';
   document.getElementById('composerGamePreference').value = 'auto';
+  document.getElementById('composerCollectPhone').value = 'false';
+  document.getElementById('composerCollectPhoneCheckbox').checked = false;
   document.getElementById('composerDurationDays').value = 7;
   document.getElementById('composerDiscountHigh').value = 30;
   document.getElementById('composerDiscountLow').value = 10;
   state.composerPreview = null;
-  composerResult.innerHTML = '<p class="muted">Compila i campi e genera una proposta. Potrai modificarla dopo la creazione.</p>';
+  state.composerStep = 0;
+  composerInlineStatus.classList.add('hidden');
+  composerInlineStatus.innerHTML = '';
+  composerResult.innerHTML = '<p class="muted">La preview si aggiorna mentre rispondi.</p>';
+  renderComposerStep();
 }
 
 function renderComposerPreview(preview) {
@@ -376,17 +448,19 @@ function renderComposerPreview(preview) {
 
   composerResult.innerHTML = `
     <div class="composer-preview-head">
-      <h3>${escapeHtml(campaign.name)}</h3>
-      <span class="campaign-badge">${campaign.guaranteedWin ? 'Vincita garantita' : 'Premio non garantito'}</span>
+      <div>
+        <span class="campaign-badge">${campaign.guaranteedWin ? 'Vincita garantita' : 'Premio non garantito'}</span>
+        <h3>${escapeHtml(campaign.name)}</h3>
+      </div>
     </div>
-    <p>${escapeHtml(campaign.description || '')}</p>
+    <p class="muted">${escapeHtml(campaign.description || '')}</p>
     <div class="composer-summary-grid">
       <div><span>Gioco</span><strong>${escapeHtml(getGameTypeLabel(campaign.gameType))}</strong></div>
       <div><span>Durata</span><strong>${formatDate(campaign.startDate)} - ${formatDate(campaign.endDate)}</strong></div>
       <div><span>Premi</span><strong>${prizes.length}</strong></div>
       <div><span>Probabilità totale</span><strong>${Math.round(totalProbability * 10) / 10}%</strong></div>
     </div>
-    <h4>Premi proposti</h4>
+    <h4>Premi</h4>
     <div class="prize-list compact">
       ${prizes.map((prize) => `
         <div class="prize-stock">
@@ -395,7 +469,7 @@ function renderComposerPreview(preview) {
         </div>
       `).join('')}
     </div>
-    <h4>Perché questa proposta</h4>
+    <h4>Consiglio</h4>
     <p class="muted">${escapeHtml(preview.recommendation?.summary || '')}</p>
     <p class="muted">${escapeHtml(preview.recommendation?.gameReason || '')}</p>
     <div class="play-link composer-link">
@@ -407,6 +481,7 @@ function renderComposerPreview(preview) {
 async function previewComposer(event) {
   if (event) event.preventDefault();
   clearError(appError);
+  composerInlineStatus.classList.add('hidden');
   composerPreviewBtn.disabled = true;
   composerPreviewBtn.textContent = 'Genero...';
 
@@ -427,19 +502,31 @@ async function previewComposer(event) {
 
 async function applyComposer() {
   clearError(appError);
+  composerInlineStatus.classList.add('hidden');
   composerApplyBtn.disabled = true;
   composerApplyBtn.textContent = 'Creo...';
 
   try {
+    if (!state.composerPreview) {
+      await previewComposer();
+    }
     const created = await api('/api/store/composer/apply', {
       method: 'POST',
       body: JSON.stringify(getComposerDraft())
     });
     await loadAll();
-    showSuccess('Campagna creata dal Composer. Puoi modificarla o generare i materiali promo.');
+    const playUrl = `${window.location.origin}${created.playUrl || ''}`;
+    composerInlineStatus.classList.remove('hidden');
+    composerInlineStatus.innerHTML = `
+      <strong>Campagna creata correttamente.</strong>
+      <span>Link gioco pronto:</span>
+      <input readonly value="${escapeHtml(playUrl)}">
+      <button type="button" class="secondary small" data-copy-created-link="${escapeHtml(playUrl)}">Copia link</button>
+    `;
+    showSuccess('Campagna creata dal Composer.');
     const campaignId = created.campaign?.id;
     if (campaignId) {
-      editCampaign(campaignId);
+      state.editingCampaignId = campaignId;
     } else {
       switchTab('campaigns');
     }
@@ -1302,6 +1389,34 @@ campaignForm.addEventListener('submit', saveCampaign);
 composerForm.addEventListener('submit', previewComposer);
 composerApplyBtn.addEventListener('click', applyComposer);
 composerResetBtn.addEventListener('click', resetComposer);
+composerBackBtn.addEventListener('click', () => {
+  state.composerStep = Math.max(0, state.composerStep - 1);
+  renderComposerStep();
+});
+composerNextBtn.addEventListener('click', async () => {
+  state.composerStep = Math.min(COMPOSER_STEPS.length - 1, state.composerStep + 1);
+  renderComposerStep();
+  await previewComposer();
+});
+composerProgress.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-composer-go-step]');
+  if (!button) return;
+  state.composerStep = Number(button.dataset.composerGoStep);
+  renderComposerStep();
+});
+composerForm.addEventListener('click', (event) => {
+  const choice = event.target.closest('[data-composer-set]');
+  if (!choice) return;
+  setComposerValue(choice.dataset.composerSet, choice.dataset.value);
+  previewComposer();
+});
+document.getElementById('composerCollectPhoneCheckbox').addEventListener('change', (event) => {
+  document.getElementById('composerCollectPhone').value = event.target.checked ? 'true' : 'false';
+  previewComposer();
+});
+['composerMainPrize', 'composerDurationDays', 'composerDiscountHigh', 'composerDiscountLow', 'composerCampaignName'].forEach((id) => {
+  document.getElementById(id).addEventListener('change', previewComposer);
+});
 createPrizeBtn.addEventListener('click', createPrize);
 resetPrizeBtn.addEventListener('click', resetPrizeForm);
 validateVoucherBtn.addEventListener('click', validateVoucher);
@@ -1335,6 +1450,14 @@ document.addEventListener('click', (event) => {
 
   if (event.target.closest('[data-quick-new-campaign]')) {
     newCampaign();
+    return;
+  }
+
+  const copyCreatedLink = event.target.closest('[data-copy-created-link]');
+  if (copyCreatedLink) {
+    navigator.clipboard.writeText(copyCreatedLink.dataset.copyCreatedLink).then(() => {
+      showSuccess('Link copiato.');
+    });
   }
 });
 

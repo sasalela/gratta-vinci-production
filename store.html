@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pannello Negozio — Gratta & Vinci</title>
-  <link rel="stylesheet" href="store.css?v=2.4.1">
+  <link rel="stylesheet" href="store.css?v=2.5.0">
 </head>
 <body>
   <main class="page">
@@ -122,49 +122,61 @@
       </section>
 
       <section id="tabComposer" class="tab-panel hidden">
-        <div class="section-heading">
+        <div class="composer-hero">
           <div>
-            <h2>Crea campagna guidata</h2>
-            <p class="muted">Rispondi a poche domande: il composer prepara gioco, testi, premi e probabilità.</p>
+            <p class="eyebrow">Auto Composer</p>
+            <h2>Crea una campagna in 2 minuti</h2>
+            <p>Una domanda alla volta. Ti suggeriamo gioco, premi, probabilità e testi senza farti compilare un pannello tecnico.</p>
           </div>
           <button id="composerResetBtn" type="button" class="ghost">Ricomincia</button>
         </div>
 
-        <div class="composer-layout">
-          <form id="composerForm" class="card composer-form">
-            <section>
-              <p class="eyebrow">1. Attività</p>
-              <label for="composerBusinessType">Tipo attività</label>
-              <select id="composerBusinessType">
-                <option value="bar">Bar / pub</option>
-                <option value="restaurant">Ristorante</option>
-                <option value="retail">Negozio</option>
-                <option value="beauty">Beauty / estetica</option>
-                <option value="fitness">Palestra / fitness</option>
-                <option value="generic">Altro</option>
-              </select>
+        <form id="composerForm" class="composer-shell">
+          <input id="composerBusinessType" type="hidden" value="bar">
+          <input id="composerGoal" type="hidden" value="bring_customers">
+          <input id="composerRewardStyle" type="hidden" value="guaranteed_multi_prize">
+          <input id="composerGamePreference" type="hidden" value="auto">
+          <input id="composerCollectPhone" type="hidden" value="false">
+
+          <div class="composer-progress" id="composerProgress"></div>
+
+          <div class="composer-stage">
+            <section class="composer-step active" data-composer-step="0">
+              <p class="eyebrow">Domanda 1 di 5</p>
+              <h3>Che tipo di attività hai?</h3>
+              <p class="muted">Serve per scegliere premi e testi già vicini al tuo settore.</p>
+              <div class="composer-choice-grid">
+                <button type="button" data-composer-set="businessType" data-value="bar">Bar / pub<span>Birra, caffè, aperitivi e sconti veloci.</span></button>
+                <button type="button" data-composer-set="businessType" data-value="restaurant">Ristorante<span>Dessert, calici, menu e ritorno a cena.</span></button>
+                <button type="button" data-composer-set="businessType" data-value="retail">Negozio<span>Buoni acquisto e sconti progressivi.</span></button>
+                <button type="button" data-composer-set="businessType" data-value="beauty">Beauty<span>Trattamenti, coupon e prenotazioni.</span></button>
+                <button type="button" data-composer-set="businessType" data-value="fitness">Fitness<span>Ingressi prova e promozioni iscrizione.</span></button>
+                <button type="button" data-composer-set="businessType" data-value="generic">Altro<span>Partiamo da una struttura generica.</span></button>
+              </div>
             </section>
 
-            <section>
-              <p class="eyebrow">2. Obiettivo</p>
-              <label for="composerGoal">Cosa vuoi ottenere?</label>
-              <select id="composerGoal">
-                <option value="bring_customers">Portare clienti in negozio</option>
-                <option value="weekend_promo">Promuovere un weekend/evento</option>
-                <option value="collect_contacts">Raccogliere contatti</option>
-                <option value="reward_purchase">Premiare chi acquista</option>
-              </select>
+            <section class="composer-step" data-composer-step="1">
+              <p class="eyebrow">Domanda 2 di 5</p>
+              <h3>Qual è l’obiettivo principale?</h3>
+              <p class="muted">Il Composer adatta gioco, campi richiesti e durata.</p>
+              <div class="composer-choice-grid">
+                <button type="button" data-composer-set="goal" data-value="bring_customers">Portare clienti in negozio<span>Promo semplice da mostrare alla cassa.</span></button>
+                <button type="button" data-composer-set="goal" data-value="weekend_promo">Spingere weekend/evento<span>Durata breve e urgenza più alta.</span></button>
+                <button type="button" data-composer-set="goal" data-value="collect_contacts">Raccogliere contatti<span>Consigliato chiedere anche telefono.</span></button>
+                <button type="button" data-composer-set="goal" data-value="reward_purchase">Premiare chi acquista<span>Premi usati come incentivo post acquisto.</span></button>
+              </div>
             </section>
 
-            <section>
-              <p class="eyebrow">3. Premi</p>
-              <label for="composerRewardStyle">Stile premio</label>
-              <select id="composerRewardStyle">
-                <option value="guaranteed_multi_prize">Vinci sempre qualcosa</option>
-                <option value="single_prize">Un solo premio raro</option>
-                <option value="discounts_only">Solo sconti</option>
-              </select>
-              <div class="form-row two">
+            <section class="composer-step" data-composer-step="2">
+              <p class="eyebrow">Domanda 3 di 5</p>
+              <h3>Che tipo di premio vuoi offrire?</h3>
+              <p class="muted">Scegli una logica, non le percentuali: le prepariamo noi.</p>
+              <div class="composer-choice-grid">
+                <button type="button" data-composer-set="rewardStyle" data-value="guaranteed_multi_prize">Vinci sempre qualcosa<span>Premio top raro + sconti più frequenti.</span></button>
+                <button type="button" data-composer-set="rewardStyle" data-value="single_prize">Un solo premio raro<span>Controlli meglio il costo promozionale.</span></button>
+                <button type="button" data-composer-set="rewardStyle" data-value="discounts_only">Solo sconti<span>Perfetto se non vuoi gestire omaggi fisici.</span></button>
+              </div>
+              <div class="form-row two composer-inline-fields">
                 <div>
                   <label for="composerMainPrize">Premio principale</label>
                   <input id="composerMainPrize" type="text" placeholder="Birra gratis">
@@ -174,7 +186,31 @@
                   <input id="composerDurationDays" type="number" min="1" max="60" value="7">
                 </div>
               </div>
-              <div class="form-row two">
+            </section>
+
+            <section class="composer-step" data-composer-step="3">
+              <p class="eyebrow">Domanda 4 di 5</p>
+              <h3>Vuoi scegliere il gioco o lasciarlo decidere a noi?</h3>
+              <p class="muted">Se non sai cosa scegliere, “automatico” è la strada più veloce.</p>
+              <div class="composer-choice-grid">
+                <button type="button" data-composer-set="gamePreference" data-value="auto">Consigliami automaticamente<span>Scelta migliore in base ai premi.</span></button>
+                <button type="button" data-composer-set="gamePreference" data-value="wheel">Ruota della fortuna<span>La più forte per multipremio.</span></button>
+                <button type="button" data-composer-set="gamePreference" data-value="scratch_card">Gratta e vinci<span>Classico e immediato.</span></button>
+                <button type="button" data-composer-set="gamePreference" data-value="instant_reveal">Scatole misteriose<span>Rapido, leggero e mobile friendly.</span></button>
+              </div>
+              <label class="switch-row composer-phone-toggle">
+                <input id="composerCollectPhoneCheckbox" type="checkbox">
+                Chiedi anche il telefono
+              </label>
+            </section>
+
+            <section class="composer-step" data-composer-step="4">
+              <p class="eyebrow">Domanda 5 di 5</p>
+              <h3>Ultimo dettaglio: come vuoi chiamarla?</h3>
+              <p class="muted">Se lasci vuoto, generiamo un nome automatico.</p>
+              <label for="composerCampaignName">Nome campagna</label>
+              <input id="composerCampaignName" type="text" placeholder="Promo weekend">
+              <div class="form-row two composer-inline-fields">
                 <div>
                   <label for="composerDiscountHigh">Sconto alto %</label>
                   <input id="composerDiscountHigh" type="number" min="1" max="90" value="30">
@@ -186,40 +222,26 @@
               </div>
             </section>
 
-            <section>
-              <p class="eyebrow">4. Esperienza</p>
-              <label for="composerGamePreference">Gioco</label>
-              <select id="composerGamePreference">
-                <option value="auto">Consigliami automaticamente</option>
-                <option value="wheel">Ruota della fortuna</option>
-                <option value="scratch_card">Gratta e vinci</option>
-                <option value="instant_reveal">Scatole misteriose</option>
-              </select>
-              <label class="switch-row">
-                <input id="composerCollectPhone" type="checkbox">
-                Chiedi anche il telefono
-              </label>
-            </section>
+            <aside class="composer-coach">
+              <div class="composer-video-card">
+                <span class="composer-play-mark"></span>
+                <strong id="composerCoachTitle">Guida veloce</strong>
+                <p id="composerCoachText">Ti aiutiamo a scegliere senza tecnicismi. Ogni risposta aggiorna la campagna consigliata.</p>
+              </div>
+              <div id="composerResult" class="composer-result composer-result-compact">
+                <p class="muted">La preview si aggiorna mentre rispondi.</p>
+              </div>
+            </aside>
+          </div>
 
-            <section>
-              <p class="eyebrow">5. Nome</p>
-              <label for="composerCampaignName">Nome campagna opzionale</label>
-              <input id="composerCampaignName" type="text" placeholder="Promo weekend">
-            </section>
-
-            <div class="form-actions">
-              <button id="composerPreviewBtn" type="submit" class="secondary">Genera anteprima</button>
-              <button id="composerApplyBtn" type="button" class="primary">Crea campagna</button>
-            </div>
-          </form>
-
-          <aside class="card composer-preview">
-            <p class="eyebrow">Anteprima</p>
-            <div id="composerResult" class="composer-result">
-              <p class="muted">Compila i campi e genera una proposta. Potrai modificarla dopo la creazione.</p>
-            </div>
-          </aside>
-        </div>
+          <div class="composer-footer">
+            <button id="composerBackBtn" type="button" class="ghost">Indietro</button>
+            <button id="composerNextBtn" type="button" class="secondary">Avanti</button>
+            <button id="composerPreviewBtn" type="submit" class="secondary">Aggiorna anteprima</button>
+            <button id="composerApplyBtn" type="button" class="primary">Crea campagna</button>
+          </div>
+          <div id="composerInlineStatus" class="composer-inline-status hidden"></div>
+        </form>
       </section>
 
       <section id="tabEditor" class="tab-panel hidden">
@@ -488,6 +510,6 @@
     </section>
   </main>
 
-  <script src="store.js?v=2.4.1"></script>
+  <script src="store.js?v=2.5.0"></script>
 </body>
 </html>
