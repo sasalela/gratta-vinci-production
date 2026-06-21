@@ -111,7 +111,7 @@ const StoreCampaignSchema = z.object({
   name: z.string().min(1),
   slug: z.string().regex(/^[a-z0-9-]+$/),
   description: z.string().optional(),
-  gameType: z.string().default('scratch_card'),
+  gameType: z.enum(['scratch_card', 'wheel', 'instant_reveal']).default('scratch_card'),
   customerFields: z.array(CustomerFieldSchema).default([]),
   playLimitMode: z.enum(['per_campaign', 'per_day']).default('per_campaign'),
   loseMessage: z.string().min(1).default('Nessun premio questa volta.'),
@@ -622,6 +622,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             storeId: created.user.storeId
           }
         }
+      });
+    }
+
+    if (path === '/api/public/games' && method === 'GET') {
+      return res.json({
+        success: true,
+        data: [
+          {
+            id: 'scratch_card',
+            name: 'Gratta e vinci',
+            description: 'Il giocatore raschia la card per scoprire l’esito.',
+            playLabel: 'Inizia e gratta'
+          },
+          {
+            id: 'wheel',
+            name: 'Ruota della fortuna',
+            description: 'Il giocatore fa girare la ruota e scopre il risultato.',
+            playLabel: 'Gira la ruota'
+          },
+          {
+            id: 'instant_reveal',
+            name: 'Apri il regalo',
+            description: 'Il giocatore apre un regalo virtuale per vedere se ha vinto.',
+            playLabel: 'Apri il regalo'
+          }
+        ]
       });
     }
 

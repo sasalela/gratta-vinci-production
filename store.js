@@ -80,6 +80,16 @@ const state = {
   scannerFrame: null
 };
 
+const GAME_TYPE_LABELS = {
+  scratch_card: 'Gratta e vinci',
+  wheel: 'Ruota della fortuna',
+  instant_reveal: 'Apri il regalo'
+};
+
+function getGameTypeLabel(gameType) {
+  return GAME_TYPE_LABELS[gameType] || gameType || 'Gratta e vinci';
+}
+
 function show(el) {
   el.classList.remove('hidden');
 }
@@ -625,6 +635,7 @@ function renderCampaigns(campaigns) {
           <button type="button" class="secondary small" data-edit-campaign="${escapeHtml(campaign.id)}">Modifica</button>
         </div>
         <div class="campaign-meta">
+          <span>Gioco: ${escapeHtml(getGameTypeLabel(campaign.gameType))}</span>
           <span>Periodo: ${formatDate(campaign.startDate)} - ${formatDate(campaign.endDate)}</span>
           <span>Limite: ${campaign.playLimitMode === 'per_day' ? '1 volta al giorno' : '1 volta per campagna'}</span>
         </div>
@@ -710,6 +721,7 @@ function resetCampaignForm() {
   document.getElementById('campaignActive').checked = true;
   document.getElementById('voucherValidityDays').value = 15;
   document.getElementById('loseMessage').value = 'Nessun premio questa volta.';
+  document.getElementById('gameType').value = 'scratch_card';
   document.querySelector('[data-field="name"]').checked = true;
   document.querySelector('[data-field="email"]').checked = true;
   prizeList.innerHTML = '<p class="muted">Inserisci qui sotto il primo premio della nuova campagna.</p>';
@@ -730,6 +742,7 @@ function editCampaign(campaignId) {
   document.getElementById('startDate').value = formatDateOnly(campaign.startDate);
   document.getElementById('endDate').value = formatDateOnly(campaign.endDate);
   document.getElementById('playLimitMode').value = campaign.playLimitMode || 'per_campaign';
+  document.getElementById('gameType').value = campaign.gameType || 'scratch_card';
   document.getElementById('voucherValidityDays').value = campaign.voucherValidityDays || 15;
   document.getElementById('loseMessage').value = campaign.loseMessage || 'Nessun premio questa volta.';
   document.getElementById('campaignActive').checked = campaign.active;
@@ -798,7 +811,7 @@ async function saveCampaign(event) {
       playLimitMode: document.getElementById('playLimitMode').value,
       voucherValidityDays: Number(document.getElementById('voucherValidityDays').value || 15),
       loseMessage: document.getElementById('loseMessage').value.trim() || 'Nessun premio questa volta.',
-      gameType: 'scratch_card',
+      gameType: document.getElementById('gameType').value,
       active: document.getElementById('campaignActive').checked,
       customerFields: getCustomerFields()
     };

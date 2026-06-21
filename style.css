@@ -196,6 +196,86 @@ canvas {
   margin: 0 auto 10px;
 }
 
+.game-help {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+.wheel-shell {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+}
+
+#wheelCanvas {
+  max-width: 360px;
+}
+
+.wheel-spin-btn {
+  min-width: 220px;
+}
+
+.gift-shell {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  padding: 10px 0 4px;
+}
+
+.gift-box {
+  align-items: center;
+  background: linear-gradient(135deg, var(--gift-primary, var(--brand-primary)), var(--gift-secondary, var(--brand-secondary)));
+  border: 0;
+  border-radius: 28px;
+  box-shadow: 0 22px 50px rgba(15, 23, 42, 0.18);
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  min-height: 220px;
+  padding: 28px;
+  transition: transform 0.35s ease, opacity 0.35s ease;
+  width: min(100%, 320px);
+}
+
+.gift-box:hover {
+  transform: translateY(-4px);
+}
+
+.gift-box.opened {
+  opacity: 0.35;
+  transform: scale(0.92);
+}
+
+.gift-lid {
+  font-size: 4.5rem;
+  line-height: 1;
+}
+
+.gift-body {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.gift-result {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  padding: 18px 20px;
+  width: min(100%, 360px);
+}
+
+.gift-result strong {
+  color: var(--ink);
+  display: block;
+  font-size: 1.35rem;
+  margin-top: 8px;
+}
+
 button {
   background: var(--brand-primary);
   color: white;
