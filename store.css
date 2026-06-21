@@ -433,6 +433,37 @@ th {
   max-width: 360px;
 }
 
+.scanner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.scanner-panel {
+  background: #0f172a;
+  border-radius: 18px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.scanner-panel video {
+  background: #111827;
+  border-radius: 12px;
+  display: block;
+  max-height: 360px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.scanner-panel p {
+  color: #e5e7eb;
+  font-weight: 700;
+  margin-top: 10px;
+  text-align: center;
+}
+
 .hidden {
   display: none;
 }
@@ -454,12 +485,14 @@ th {
 
   .topbar-actions,
   .form-actions,
+  .scanner-actions,
   .voucher-box {
     width: 100%;
   }
 
   .topbar-actions button,
   .form-actions button,
+  .scanner-actions button,
   .voucher-box button {
     flex: 1;
   }

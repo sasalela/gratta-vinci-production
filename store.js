@@ -27,6 +27,11 @@ const voucherCode = document.getElementById('voucherCode');
 const validateVoucherBtn = document.getElementById('validateVoucherBtn');
 const redeemVoucherBtn = document.getElementById('redeemVoucherBtn');
 const voucherResult = document.getElementById('voucherResult');
+const scanQrBtn = document.getElementById('scanQrBtn');
+const stopScanBtn = document.getElementById('stopScanBtn');
+const scannerPanel = document.getElementById('scannerPanel');
+const qrVideo = document.getElementById('qrVideo');
+const scannerStatus = document.getElementById('scannerStatus');
 const editorTitle = document.getElementById('editorTitle');
 const editorSubtitle = document.getElementById('editorSubtitle');
 const prizeList = document.getElementById('prizeList');
@@ -42,7 +47,9 @@ const state = {
   vouchers: [],
   alerts: [],
   editingCampaignId: null,
-  store: null
+  store: null,
+  scannerStream: null,
+  scannerFrame: null
 };
 
 function show(el) {
@@ -162,11 +169,26 @@ function showSuccess(message) {
 }
 
 function switchTab(name) {
+  if (name !== 'vouchers') {
+    stopQrScanner();
+  }
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.classList.toggle('active', tab.dataset.tab === name);
   });
   document.querySelectorAll('.tab-panel').forEach((panel) => hide(panel));
   show(document.getElementById(`tab${name[0].toUpperCase()}${name.slice(1)}`));
+}
+
+function normalizeScannedVoucherCode(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+
+  try {
+    const url = new URL(text);
+    return url.searchParams.get('code') || url.pathname.split('/').filter(Boolean).pop() || text;
+  } catch {
+    return text;
+  }
 }
 
 async function login() {
@@ -511,7 +533,83 @@ async function redeemVoucher() {
   }
 }
 
+async function startQrScanner() {
+  voucherResult.innerHTML = '';
+
+  if (!('BarcodeDetector' in window)) {
+    voucherResult.innerHTML = '<div class="message error">Scanner QR non supportato da questo browser. Inserisci il codice manualmente.</div>';
+    return;
+  }
+
+  try {
+    show(scannerPanel);
+    show(stopScanBtn);
+    scanQrBtn.disabled = true;
+    scannerStatus.textContent = 'Apro la fotocamera...';
+
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+
+    state.scannerStream = stream;
+    qrVideo.srcObject = stream;
+    await qrVideo.play();
+    scannerStatus.textContent = 'Inquadra il QR della card premio.';
+
+    const scan = async () => {
+      if (!state.scannerStream) return;
+
+      try {
+        const codes = await detector.detect(qrVideo);
+        if (codes.length > 0) {
+          const code = normalizeScannedVoucherCode(codes[0].rawValue);
+          if (code) {
+            voucherCode.value = code;
+            stopQrScanner();
+            voucherResult.innerHTML = `<div class="message success">Codice letto: ${escapeHtml(code)}</div>`;
+            await validateVoucher();
+            return;
+          }
+        }
+      } catch {
+        scannerStatus.textContent = 'Non riesco a leggere il QR. Avvicina la card e riprova.';
+      }
+
+      state.scannerFrame = requestAnimationFrame(scan);
+    };
+
+    state.scannerFrame = requestAnimationFrame(scan);
+  } catch (error) {
+    stopQrScanner();
+    voucherResult.innerHTML = `<div class="message error">Impossibile aprire la fotocamera: ${escapeHtml(error.message || 'permesso negato')}</div>`;
+  } finally {
+    scanQrBtn.disabled = false;
+  }
+}
+
+function stopQrScanner() {
+  if (state.scannerFrame) {
+    cancelAnimationFrame(state.scannerFrame);
+    state.scannerFrame = null;
+  }
+
+  if (state.scannerStream) {
+    state.scannerStream.getTracks().forEach((track) => track.stop());
+    state.scannerStream = null;
+  }
+
+  qrVideo.pause();
+  qrVideo.srcObject = null;
+  hide(scannerPanel);
+  hide(stopScanBtn);
+  scanQrBtn.disabled = false;
+  scannerStatus.textContent = 'Inquadra il QR della card premio.';
+}
+
 function logout() {
+  stopQrScanner();
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
   show(loginSection);
@@ -531,6 +629,8 @@ campaignForm.addEventListener('submit', saveCampaign);
 createPrizeBtn.addEventListener('click', createPrize);
 validateVoucherBtn.addEventListener('click', validateVoucher);
 redeemVoucherBtn.addEventListener('click', redeemVoucher);
+scanQrBtn.addEventListener('click', startQrScanner);
+stopScanBtn.addEventListener('click', stopQrScanner);
 cancelEditBtn.addEventListener('click', () => switchTab('campaigns'));
 cancelEditBtnBottom.addEventListener('click', () => switchTab('campaigns'));
 document.getElementById('campaignName').addEventListener('input', (event) => {

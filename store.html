@@ -220,10 +220,18 @@
         <div class="section-heading">
           <div>
             <h2>Validazione voucher</h2>
-            <p class="muted">Inserisci il codice mostrato al cliente e riscatta il premio.</p>
+            <p class="muted">Scansiona la card premio del cliente oppure inserisci manualmente il codice voucher.</p>
           </div>
         </div>
         <div class="card">
+          <div class="scanner-actions">
+            <button id="scanQrBtn" type="button" class="secondary">Scansiona QR card premio</button>
+            <button id="stopScanBtn" type="button" class="ghost hidden">Ferma scanner</button>
+          </div>
+          <div id="scannerPanel" class="scanner-panel hidden">
+            <video id="qrVideo" playsinline muted></video>
+            <p id="scannerStatus" class="muted">Inquadra il QR della card premio.</p>
+          </div>
           <div class="voucher-box">
             <input id="voucherCode" type="text" placeholder="Codice voucher">
             <button id="validateVoucherBtn" type="button" class="secondary">Verifica</button>
