@@ -68,6 +68,7 @@
         <button class="tab" data-tab="materials">Materiali promo</button>
         <button class="tab" data-tab="vouchers">Voucher</button>
         <button class="tab" data-tab="players">Giocatori</button>
+        <button class="tab" data-tab="profile">Profilo negozio</button>
       </nav>
 
       <section id="tabCampaigns" class="tab-panel">
@@ -269,6 +270,55 @@
         <div class="card">
           <div id="participationsTable" class="table-wrap"></div>
         </div>
+      </section>
+
+      <section id="tabProfile" class="tab-panel hidden">
+        <div class="section-heading">
+          <div>
+            <h2>Profilo negozio</h2>
+            <p class="muted">Aggiorna brand e dati visibili nel gioco, nella card premio e nei materiali promozionali.</p>
+          </div>
+        </div>
+        <form id="profileForm" class="profile-grid">
+          <section class="card">
+            <h3>Dati negozio</h3>
+            <label for="profileName">Nome visualizzato</label>
+            <input id="profileName" type="text" required>
+            <div class="form-row two">
+              <div>
+                <label for="profilePhone">Telefono</label>
+                <input id="profilePhone" type="text">
+              </div>
+              <div>
+                <label for="profileAddress">Indirizzo</label>
+                <input id="profileAddress" type="text">
+              </div>
+            </div>
+            <label for="profileLogoUrl">Logo URL</label>
+            <input id="profileLogoUrl" type="url" placeholder="https://...">
+            <div class="form-row two">
+              <div>
+                <label for="profilePrimaryColor">Colore primario</label>
+                <input id="profilePrimaryColor" type="color" value="#667eea">
+              </div>
+              <div>
+                <label for="profileSecondaryColor">Colore secondario</label>
+                <input id="profileSecondaryColor" type="color" value="#764ba2">
+              </div>
+            </div>
+            <button id="saveProfileBtn" type="submit" class="primary">Salva profilo</button>
+          </section>
+
+          <section class="card">
+            <h3>Anteprima brand</h3>
+            <div id="profilePreview" class="profile-preview">
+              <div id="profilePreviewLogo" class="profile-preview-logo">GV</div>
+              <p class="eyebrow">Gioco promozionale</p>
+              <h2 id="profilePreviewName">Negozio</h2>
+              <p id="profilePreviewMeta" class="muted">Colori e dati compariranno su gioco e card premio.</p>
+            </div>
+          </section>
+        </form>
       </section>
     </section>
   </main>

@@ -28,6 +28,15 @@ const StoreSchema = z.object({
 
 const StoreUpdateSchema = StoreSchema.partial();
 
+const StoreProfileSchema = z.object({
+  name: z.string().min(1),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  logoUrl: z.string().url().optional().or(z.literal('')),
+  primaryColor: z.string().default('#667eea'),
+  secondaryColor: z.string().default('#764ba2')
+});
+
 const UserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
@@ -669,6 +678,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             store
           }
         });
+      }
+
+      if (path === '/api/store/me' && method === 'PUT') {
+        const validation = StoreProfileSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            success: false,
+            errors: validation.error.errors
+          });
+        }
+
+        const { phone, address, logoUrl, ...profileData } = validation.data;
+        const store = await prisma.store.update({
+          where: { id: storeId },
+          data: {
+            ...profileData,
+            phone: phone || null,
+            address: address || null,
+            logoUrl: logoUrl || null
+          } as any
+        });
+
+        return res.json({ success: true, data: store });
       }
 
       if (path === '/api/store/campaigns' && method === 'GET') {

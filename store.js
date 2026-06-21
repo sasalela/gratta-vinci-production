@@ -41,6 +41,17 @@ const statActiveCampaigns = document.getElementById('statActiveCampaigns');
 const statParticipations = document.getElementById('statParticipations');
 const statOpenVouchers = document.getElementById('statOpenVouchers');
 const statRedeemedVouchers = document.getElementById('statRedeemedVouchers');
+const profileForm = document.getElementById('profileForm');
+const profileName = document.getElementById('profileName');
+const profilePhone = document.getElementById('profilePhone');
+const profileAddress = document.getElementById('profileAddress');
+const profileLogoUrl = document.getElementById('profileLogoUrl');
+const profilePrimaryColor = document.getElementById('profilePrimaryColor');
+const profileSecondaryColor = document.getElementById('profileSecondaryColor');
+const profilePreview = document.getElementById('profilePreview');
+const profilePreviewLogo = document.getElementById('profilePreviewLogo');
+const profilePreviewName = document.getElementById('profilePreviewName');
+const profilePreviewMeta = document.getElementById('profilePreviewMeta');
 
 const state = {
   campaigns: [],
@@ -249,11 +260,72 @@ async function loadAll() {
 
     storeName.textContent = me.store?.name || 'Negozio';
     userLabel.textContent = ` — ${me.user.email}`;
+    populateProfileForm(me.store);
     renderStats();
     renderCampaigns(campaigns);
     renderParticipations(participations);
     renderVouchers(vouchers);
     renderAlerts(alerts);
+  } catch (error) {
+    setError(appError, error.message);
+  }
+}
+
+function storeInitials(name) {
+  return String(name || 'GV')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join('');
+}
+
+function populateProfileForm(store) {
+  if (!store) return;
+  profileName.value = store.name || '';
+  profilePhone.value = store.phone || '';
+  profileAddress.value = store.address || '';
+  profileLogoUrl.value = store.logoUrl || '';
+  profilePrimaryColor.value = store.primaryColor || '#667eea';
+  profileSecondaryColor.value = store.secondaryColor || '#764ba2';
+  renderProfilePreview();
+}
+
+function renderProfilePreview() {
+  const primary = profilePrimaryColor.value || '#667eea';
+  const secondary = profileSecondaryColor.value || '#764ba2';
+  profilePreview.style.background = `linear-gradient(135deg, ${primary}, ${secondary})`;
+  profilePreviewName.textContent = profileName.value || 'Negozio';
+  profilePreviewMeta.textContent = [profilePhone.value, profileAddress.value].filter(Boolean).join(' · ') || 'Colori e dati compariranno su gioco e card premio.';
+
+  if (profileLogoUrl.value.trim()) {
+    profilePreviewLogo.innerHTML = `<img src="${escapeHtml(profileLogoUrl.value.trim())}" alt="${escapeHtml(profileName.value || 'Logo negozio')}">`;
+  } else {
+    profilePreviewLogo.textContent = storeInitials(profileName.value);
+  }
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  clearError(appError);
+
+  try {
+    const store = await api('/api/store/me', {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: profileName.value.trim(),
+        phone: profilePhone.value.trim(),
+        address: profileAddress.value.trim(),
+        logoUrl: profileLogoUrl.value.trim(),
+        primaryColor: profilePrimaryColor.value,
+        secondaryColor: profileSecondaryColor.value
+      })
+    });
+
+    state.store = store;
+    storeName.textContent = store.name;
+    renderProfilePreview();
+    showSuccess('Profilo negozio aggiornato correttamente.');
   } catch (error) {
     setError(appError, error.message);
   }
@@ -710,6 +782,7 @@ validateVoucherBtn.addEventListener('click', validateVoucher);
 redeemVoucherBtn.addEventListener('click', redeemVoucher);
 scanQrBtn.addEventListener('click', startQrScanner);
 stopScanBtn.addEventListener('click', stopQrScanner);
+profileForm.addEventListener('submit', saveProfile);
 cancelEditBtn.addEventListener('click', () => switchTab('campaigns'));
 cancelEditBtnBottom.addEventListener('click', () => switchTab('campaigns'));
 document.getElementById('campaignName').addEventListener('input', (event) => {
@@ -720,6 +793,10 @@ document.getElementById('campaignName').addEventListener('input', (event) => {
 
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+[profileName, profilePhone, profileAddress, profileLogoUrl, profilePrimaryColor, profileSecondaryColor].forEach((input) => {
+  input.addEventListener('input', renderProfilePreview);
 });
 
 resetCampaignForm();

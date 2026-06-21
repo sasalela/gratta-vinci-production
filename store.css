@@ -196,6 +196,12 @@ textarea:focus {
   gap: 16px;
 }
 
+.profile-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+
 .checkbox-grid {
   display: grid;
   gap: 10px;
@@ -515,6 +521,45 @@ th {
   text-align: center;
 }
 
+.profile-preview {
+  border-radius: 20px;
+  color: #fff;
+  min-height: 330px;
+  padding: 28px;
+  text-align: center;
+}
+
+.profile-preview .eyebrow,
+.profile-preview .muted {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.profile-preview h2 {
+  font-size: 2rem;
+  margin: 10px 0;
+}
+
+.profile-preview-logo {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 22px;
+  color: #667eea;
+  display: inline-flex;
+  font-size: 1.55rem;
+  font-weight: 900;
+  height: 92px;
+  justify-content: center;
+  margin-bottom: 18px;
+  overflow: hidden;
+  width: 92px;
+}
+
+.profile-preview-logo img {
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
 .hidden {
   display: none;
 }
@@ -522,6 +567,7 @@ th {
 @media (max-width: 900px) {
   .login-card,
   .stats-grid,
+  .profile-grid,
   .form-row.two {
     grid-template-columns: 1fr;
   }
