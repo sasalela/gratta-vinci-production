@@ -33,9 +33,19 @@
             <p class="eyebrow">Un solo tentativo</p>
             <h2>Raschia la card</h2>
             <p class="scratch-help">Passa il dito sulla card per scoprire l’esito. La giocata vale una sola volta.</p>
-            <canvas id="scratch" width="360" height="190"></canvas>
+            <canvas id="scratch" width="420" height="250"></canvas>
+            <div class="scratch-progress">
+                <div id="scratchProgressBar"></div>
+            </div>
+            <p id="scratchProgressText" class="scratch-progress-text">Continua a grattare</p>
             <div id="result"></div>
-            <p id="finalNotice" class="final-notice hidden">Giocata registrata. Conserva il codice se hai vinto e mostralo al negoziante.</p>
+            <div id="voucherCard" class="voucher-card hidden">
+                <h3>La tua card premio</h3>
+                <p>Scaricala e conservala nella galleria del telefono. Mostrala in negozio per ritirare il premio.</p>
+                <canvas id="voucherCanvas" width="900" height="1400"></canvas>
+                <button id="downloadVoucherBtn" type="button">Scarica card premio</button>
+            </div>
+            <p id="finalNotice" class="final-notice hidden">Giocata registrata. Se hai vinto, conserva la card premio e mostrala al negoziante.</p>
         </div>
     </main>
 
