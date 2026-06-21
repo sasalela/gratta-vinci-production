@@ -52,6 +52,18 @@
     {
       "src": "content.css",
       "use": "@vercel/static"
+    },
+    {
+      "src": "redeem.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "redeem.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "redeem.css",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -94,6 +106,18 @@
     {
       "src": "/content.css",
       "dest": "/content.css"
+    },
+    {
+      "src": "/redeem.html",
+      "dest": "/redeem.html"
+    },
+    {
+      "src": "/redeem.js",
+      "dest": "/redeem.js"
+    },
+    {
+      "src": "/redeem.css",
+      "dest": "/redeem.css"
     },
     {
       "src": "/app.js",

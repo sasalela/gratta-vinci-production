@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ritiro Premio — Gratta & Vinci</title>
+  <link rel="stylesheet" href="redeem.css">
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <p class="eyebrow">Ritiro premio</p>
+      <h1>Verifica card premio</h1>
+      <p>Controlla il voucher del cliente e riscattalo in modo sicuro.</p>
+    </section>
+
+    <section id="loginSection" class="card hidden">
+      <h2>Accesso negozio</h2>
+      <p class="muted">Accedi con l’account negozio per validare il voucher.</p>
+      <label for="emailInput">Email</label>
+      <input id="emailInput" type="email" autocomplete="username" placeholder="negozio@email.it">
+      <label for="passwordInput">Password</label>
+      <input id="passwordInput" type="password" autocomplete="current-password">
+      <div id="loginError" class="message error hidden"></div>
+      <button id="loginBtn" type="button">Accedi e verifica</button>
+    </section>
+
+    <section id="redeemSection" class="card hidden">
+      <div class="voucher-head">
+        <div>
+          <p class="eyebrow">Codice voucher</p>
+          <h2 id="voucherCodeLabel">-</h2>
+        </div>
+        <span id="statusBadge" class="status">-</span>
+      </div>
+
+      <div id="loadError" class="message error hidden"></div>
+      <div id="successMessage" class="message success hidden"></div>
+
+      <div id="voucherDetails" class="details-grid"></div>
+
+      <div class="actions">
+        <button id="redeemBtn" type="button">Riscatta premio</button>
+        <a class="button secondary" href="/store.html">Vai al pannello negozio</a>
+      </div>
+    </section>
+  </main>
+
+  <script src="redeem.js"></script>
+</body>
+</html>

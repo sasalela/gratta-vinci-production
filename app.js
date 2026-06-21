@@ -541,7 +541,8 @@ async function renderVoucherCard() {
   voucherCtx.fillText(gameData.voucherCode, voucherCanvas.width / 2, 930);
 
   try {
-    const qrImage = await loadImage(`/api/public/qr?text=${encodeURIComponent(gameData.voucherCode)}`);
+    const redeemUrl = `${window.location.origin}/redeem.html?code=${encodeURIComponent(gameData.voucherCode)}`;
+    const qrImage = await loadImage(`/api/public/qr?text=${encodeURIComponent(redeemUrl)}`);
     voucherCtx.fillStyle = '#ffffff';
     roundedRect(voucherCtx, voucherCanvas.width / 2 - 145, 1000, 290, 290, 30);
     voucherCtx.fill();
