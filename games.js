@@ -304,39 +304,69 @@ window.PromoGames = (() => {
       this.stopping = false;
       this.finished = false;
       this.rotation = 0;
-      this.spinSpeed = 0.34;
+      this.spinSpeed = 0.28;
       this.rafId = null;
+      this.spinTimeoutId = null;
       this.handlers = {};
+    }
+
+    cancelAnimation() {
+      if (this.rafId) {
+        cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+      if (this.spinTimeoutId) {
+        clearTimeout(this.spinTimeoutId);
+        this.spinTimeoutId = null;
+      }
     }
 
     start() {
       this.container.innerHTML = `
         <div class="wheel-shell">
-          <canvas id="wheelCanvas" width="360" height="360"></canvas>
+          <canvas id="wheelCanvas" width="320" height="320"></canvas>
           <p id="wheelStatus" class="wheel-status">Premi per far girare la ruota.</p>
           <button id="spinWheelBtn" type="button" class="primary wheel-spin-btn">Gira la ruota</button>
         </div>
       `;
       this.canvas = this.container.querySelector('#wheelCanvas');
       this.ctx = this.canvas.getContext('2d');
+      this.canvas.style.touchAction = 'manipulation';
       this.spinBtn = this.container.querySelector('#spinWheelBtn');
       this.statusEl = this.container.querySelector('#wheelStatus');
       this.segments = this.buildSegments();
+      if (!this.segments.length) {
+        this.statusEl.textContent = 'Nessun premio disponibile al momento.';
+        this.spinBtn.disabled = true;
+        return;
+      }
       this.targetRotation = this.getTargetRotation();
       this.drawWheel(this.rotation);
       this.handlers.spinClick = () => this.handleSpinButton();
       this.spinBtn.addEventListener('click', this.handlers.spinClick);
     }
 
+    getWheelPrizes() {
+      const seen = new Set();
+      return (this.context.campaignConfig?.prizes || [])
+        .filter((prize) => prize.available !== false)
+        .filter((prize) => {
+          if (!prize.id || seen.has(prize.id)) return false;
+          seen.add(prize.id);
+          return true;
+        })
+        .slice(0, 8);
+    }
+
     buildSegments() {
       const guaranteedWin = Boolean(this.context.campaignConfig?.guaranteedWin);
-      const availablePrizes = (this.context.campaignConfig?.prizes || []).filter((prize) => prize.available !== false);
+      const availablePrizes = this.getWheelPrizes();
       const palette = ['#667eea', '#764ba2', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#14b8a6'];
       const loseLabel = 'Riprova';
 
       const formatLabel = (prize) => {
         const raw = `${prize.emoji || ''} ${prize.name}`.trim();
-        return raw.length > 16 ? `${raw.slice(0, 15)}…` : raw;
+        return raw.length > 14 ? `${raw.slice(0, 13)}…` : raw;
       };
 
       if (guaranteedWin && availablePrizes.length > 0) {
@@ -360,12 +390,11 @@ window.PromoGames = (() => {
         });
       });
 
-      const minSegments = Math.max(6, segments.length);
-      while (segments.length < minSegments) {
+      while (segments.length < 6) {
         segments.push({ label: loseLabel, kind: 'lose' });
       }
 
-      return segments.map((segment, index) => ({
+      return segments.slice(0, 8).map((segment, index) => ({
         ...segment,
         color: palette[index % palette.length]
       }));
@@ -373,6 +402,8 @@ window.PromoGames = (() => {
 
     getTargetRotation() {
       const { gameData } = this.context;
+      if (!this.segments.length) return 0;
+
       const slice = (Math.PI * 2) / this.segments.length;
       let targetIndex = this.segments.findIndex((segment) => segment.kind === 'lose');
 
@@ -396,15 +427,18 @@ window.PromoGames = (() => {
     }
 
     drawWheel(rotation) {
+      if (!this.ctx || !this.segments.length) return;
+
       const ctx = this.ctx;
       const center = this.canvas.width / 2;
-      const radius = center - 16;
+      const radius = center - 14;
       const slice = (Math.PI * 2) / this.segments.length;
+      const safeRotation = Number.isFinite(rotation) ? rotation : 0;
 
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       ctx.save();
       ctx.translate(center, center);
-      ctx.rotate(rotation);
+      ctx.rotate(safeRotation);
 
       this.segments.forEach((segment, index) => {
         const start = index * slice;
@@ -414,15 +448,15 @@ window.PromoGames = (() => {
         ctx.arc(0, 0, radius, start, start + slice);
         ctx.fill();
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         ctx.stroke();
 
         ctx.save();
         ctx.rotate(start + slice / 2);
         ctx.textAlign = 'center';
         ctx.fillStyle = '#ffffff';
-        ctx.font = `${this.segments.length > 6 ? 11 : 13}px Arial`;
-        ctx.fillText(segment.label.slice(0, this.segments.length > 6 ? 12 : 16), radius * 0.62, 5);
+        ctx.font = `700 ${this.segments.length > 6 ? 10 : 12}px Arial`;
+        ctx.fillText(segment.label, radius * 0.62, 4);
         ctx.restore();
       });
 
@@ -431,26 +465,26 @@ window.PromoGames = (() => {
       ctx.fillStyle = '#111827';
       ctx.beginPath();
       ctx.moveTo(center, 8);
-      ctx.lineTo(center - 14, 34);
-      ctx.lineTo(center + 14, 34);
+      ctx.lineTo(center - 12, 30);
+      ctx.lineTo(center + 12, 30);
       ctx.closePath();
       ctx.fill();
 
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(center, center, 34, 0, Math.PI * 2);
+      ctx.arc(center, center, 30, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 3;
       ctx.stroke();
       ctx.fillStyle = '#667eea';
-      ctx.font = '900 16px Arial';
+      ctx.font = '900 14px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('GIRA', center, center + 6);
+      ctx.fillText('GIRA', center, center + 5);
     }
 
     handleSpinButton() {
-      if (this.finished) return;
+      if (this.finished || !this.segments.length) return;
       if (!this.spinning) {
         this.startSpinning();
         return;
@@ -461,6 +495,7 @@ window.PromoGames = (() => {
     }
 
     startSpinning() {
+      this.cancelAnimation();
       this.spinning = true;
       this.stopping = false;
       this.spinBtn.textContent = 'STOP!';
@@ -470,7 +505,7 @@ window.PromoGames = (() => {
 
       const tick = (now) => {
         if (!this.spinning || this.stopping) return;
-        const delta = Math.min(32, now - this.lastFrame);
+        const delta = Math.min(32, Math.max(0, now - this.lastFrame));
         this.lastFrame = now;
         this.rotation += this.spinSpeed * (delta / 16);
         this.drawWheel(this.rotation);
@@ -478,28 +513,29 @@ window.PromoGames = (() => {
       };
 
       this.rafId = requestAnimationFrame(tick);
+      this.spinTimeoutId = setTimeout(() => {
+        if (this.spinning && !this.stopping && !this.finished) {
+          this.statusEl.textContent = 'Tempo scaduto: la ruota si ferma da sola.';
+          this.stopSpinning();
+        }
+      }, 9000);
     }
 
     computeStopRotation(current, target, minTurns = 2.5) {
       const twoPi = Math.PI * 2;
       const normalize = (value) => ((value % twoPi) + twoPi) % twoPi;
-      const targetNorm = normalize(target);
-      let final = current + minTurns * twoPi;
-      let guard = 0;
-
-      while (guard < 1000) {
-        const delta = (targetNorm - normalize(final) + twoPi) % twoPi;
-        final += delta;
-        if (final - current >= minTurns * twoPi) break;
-        final += twoPi * 0.25;
-        guard += 1;
-      }
-
+      const minFinal = current + minTurns * twoPi;
+      let final = minFinal;
+      const offset = (normalize(target) - normalize(final) + twoPi) % twoPi;
+      final += offset;
+      if (final < minFinal) final += twoPi;
       return final;
     }
 
     stopSpinning() {
+      if (this.stopping || this.finished) return;
       this.stopping = true;
+      this.cancelAnimation();
       this.spinBtn.disabled = true;
       this.spinBtn.classList.remove('wheel-stop-btn');
       this.spinBtn.textContent = 'Si ferma…';
@@ -507,7 +543,7 @@ window.PromoGames = (() => {
 
       const startRotation = this.rotation;
       const finalRotation = this.computeStopRotation(startRotation, this.targetRotation);
-      const duration = 2400;
+      const duration = 2200;
       const start = performance.now();
 
       const animate = (now) => {
@@ -523,6 +559,7 @@ window.PromoGames = (() => {
 
         this.finished = true;
         this.spinning = false;
+        this.stopping = false;
         this.statusEl.textContent = 'La ruota si è fermata sul tuo esito.';
         this.spinBtn.textContent = 'Esito sbloccato';
         this.context.onReveal();
@@ -532,7 +569,7 @@ window.PromoGames = (() => {
     }
 
     destroy() {
-      if (this.rafId) cancelAnimationFrame(this.rafId);
+      this.cancelAnimation();
       if (this.spinBtn && this.handlers.spinClick) {
         this.spinBtn.removeEventListener('click', this.handlers.spinClick);
       }

@@ -21,8 +21,15 @@ const resultDiv = document.getElementById('result');
 const finalNotice = document.getElementById('finalNotice');
 const voucherCard = document.getElementById('voucherCard');
 const voucherCanvas = document.getElementById('voucherCanvas');
-const voucherCtx = voucherCanvas.getContext('2d');
 const downloadVoucherBtn = document.getElementById('downloadVoucherBtn');
+let voucherCtx = null;
+
+function getVoucherContext() {
+  if (!voucherCtx) {
+    voucherCtx = voucherCanvas.getContext('2d');
+  }
+  return voucherCtx;
+}
 
 let gameData = null;
 let campaignConfig = null;
@@ -286,50 +293,51 @@ function showResult() {
 async function renderVoucherCard() {
   if (!gameData?.won) return;
 
+  const ctx = getVoucherContext();
   const primary = campaignConfig?.store?.primaryColor || '#667eea';
   const secondary = campaignConfig?.store?.secondaryColor || '#764ba2';
   const storeName = campaignConfig?.store?.name || 'Gratta & Vinci';
   const campaignName = campaignConfig?.name || 'Gioco promozionale';
   const expiresAt = new Date(gameData.expiresAt).toLocaleDateString('it-IT');
 
-  voucherCtx.clearRect(0, 0, voucherCanvas.width, voucherCanvas.height);
-  const gradient = voucherCtx.createLinearGradient(0, 0, voucherCanvas.width, voucherCanvas.height);
+  ctx.clearRect(0, 0, voucherCanvas.width, voucherCanvas.height);
+  const gradient = ctx.createLinearGradient(0, 0, voucherCanvas.width, voucherCanvas.height);
   gradient.addColorStop(0, primary);
   gradient.addColorStop(1, secondary);
-  voucherCtx.fillStyle = gradient;
-  voucherCtx.fillRect(0, 0, voucherCanvas.width, voucherCanvas.height);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, voucherCanvas.width, voucherCanvas.height);
 
-  voucherCtx.fillStyle = 'rgba(255,255,255,0.95)';
-  roundedRect(voucherCtx, 70, 70, voucherCanvas.width - 140, voucherCanvas.height - 140, 54);
-  voucherCtx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  roundedRect(ctx, 70, 70, voucherCanvas.width - 140, voucherCanvas.height - 140, 54);
+  ctx.fill();
 
-  voucherCtx.textAlign = 'center';
-  voucherCtx.fillStyle = '#ffffff';
-  roundedRect(voucherCtx, 130, 130, 150, 150, 36);
-  voucherCtx.fill();
-  voucherCtx.strokeStyle = primary;
-  voucherCtx.lineWidth = 8;
-  voucherCtx.stroke();
-  voucherCtx.fillStyle = primary;
-  voucherCtx.font = '900 58px Arial';
-  voucherCtx.fillText(storeInitials(storeName), 205, 225);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  roundedRect(ctx, 130, 130, 150, 150, 36);
+  ctx.fill();
+  ctx.strokeStyle = primary;
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  ctx.fillStyle = primary;
+  ctx.font = '900 58px Arial';
+  ctx.fillText(storeInitials(storeName), 205, 225);
 
-  voucherCtx.fillStyle = primary;
-  voucherCtx.font = '900 42px Arial';
-  voucherCtx.fillText(storeName, voucherCanvas.width / 2, 330);
+  ctx.fillStyle = primary;
+  ctx.font = '900 42px Arial';
+  ctx.fillText(storeName, voucherCanvas.width / 2, 330);
 
-  voucherCtx.fillStyle = '#111827';
-  voucherCtx.font = '900 74px Arial';
-  voucherCtx.fillText('CARD PREMIO', voucherCanvas.width / 2, 430);
+  ctx.fillStyle = '#111827';
+  ctx.font = '900 74px Arial';
+  ctx.fillText('CARD PREMIO', voucherCanvas.width / 2, 430);
 
-  voucherCtx.fillStyle = '#4b5563';
-  voucherCtx.font = '900 30px Arial';
-  voucherCtx.fillText('PREMIO VINTO', voucherCanvas.width / 2, 505);
+  ctx.fillStyle = '#4b5563';
+  ctx.font = '900 30px Arial';
+  ctx.fillText('PREMIO VINTO', voucherCanvas.width / 2, 505);
 
-  voucherCtx.fillStyle = secondary;
-  voucherCtx.font = '900 58px Arial';
+  ctx.fillStyle = secondary;
+  ctx.font = '900 58px Arial';
   drawCenteredText(
-    voucherCtx,
+    ctx,
     `${gameData.prize.emoji || ''} ${gameData.prize.name}`.trim(),
     voucherCanvas.width / 2,
     555,
@@ -338,38 +346,38 @@ async function renderVoucherCard() {
     2
   );
 
-  voucherCtx.fillStyle = '#4b5563';
-  voucherCtx.font = '700 32px Arial';
-  drawCenteredText(voucherCtx, campaignName, voucherCanvas.width / 2, 720, voucherCanvas.width - 220, 40, 2);
+  ctx.fillStyle = '#4b5563';
+  ctx.font = '700 32px Arial';
+  drawCenteredText(ctx, campaignName, voucherCanvas.width / 2, 720, voucherCanvas.width - 220, 40, 2);
 
-  voucherCtx.fillStyle = '#f8fafc';
-  roundedRect(voucherCtx, 150, 815, voucherCanvas.width - 300, 150, 34);
-  voucherCtx.fill();
-  voucherCtx.strokeStyle = '#d1d5db';
-  voucherCtx.lineWidth = 3;
-  voucherCtx.stroke();
-  voucherCtx.fillStyle = '#111827';
-  voucherCtx.font = '900 38px Arial';
-  voucherCtx.fillText('CODICE VOUCHER', voucherCanvas.width / 2, 865);
-  voucherCtx.font = '900 48px Arial';
-  voucherCtx.fillText(gameData.voucherCode, voucherCanvas.width / 2, 930);
+  ctx.fillStyle = '#f8fafc';
+  roundedRect(ctx, 150, 815, voucherCanvas.width - 300, 150, 34);
+  ctx.fill();
+  ctx.strokeStyle = '#d1d5db';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fillStyle = '#111827';
+  ctx.font = '900 38px Arial';
+  ctx.fillText('CODICE VOUCHER', voucherCanvas.width / 2, 865);
+  ctx.font = '900 48px Arial';
+  ctx.fillText(gameData.voucherCode, voucherCanvas.width / 2, 930);
 
   try {
     const redeemUrl = `${window.location.origin}/redeem.html?code=${encodeURIComponent(gameData.voucherCode)}`;
     const qrImage = await loadImage(`/api/public/qr?text=${encodeURIComponent(redeemUrl)}`);
-    voucherCtx.fillStyle = '#ffffff';
-    roundedRect(voucherCtx, voucherCanvas.width / 2 - 145, 1000, 290, 290, 30);
-    voucherCtx.fill();
-    voucherCtx.drawImage(qrImage, voucherCanvas.width / 2 - 125, 1020, 250, 250);
+    ctx.fillStyle = '#ffffff';
+    roundedRect(ctx, voucherCanvas.width / 2 - 145, 1000, 290, 290, 30);
+    ctx.fill();
+    ctx.drawImage(qrImage, voucherCanvas.width / 2 - 125, 1020, 250, 250);
   } catch {
-    voucherCtx.fillStyle = '#6b7280';
-    voucherCtx.font = '700 28px Arial';
-    voucherCtx.fillText('QR non disponibile', voucherCanvas.width / 2, 1135);
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '700 28px Arial';
+    ctx.fillText('QR non disponibile', voucherCanvas.width / 2, 1135);
   }
 
-  voucherCtx.fillStyle = '#4b5563';
-  voucherCtx.font = '800 30px Arial';
-  voucherCtx.fillText(`Valido fino al ${expiresAt}`, voucherCanvas.width / 2, 1330);
+  ctx.fillStyle = '#4b5563';
+  ctx.font = '800 30px Arial';
+  ctx.fillText(`Valido fino al ${expiresAt}`, voucherCanvas.width / 2, 1330);
 }
 
 function downloadVoucherCard() {
