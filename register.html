@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registrazione Negozio — Gratta & Vinci</title>
+  <link rel="stylesheet" href="register.css">
+</head>
+<body>
+  <main class="register-page">
+    <section class="hero">
+      <p class="eyebrow">Attiva il tuo negozio</p>
+      <h1>Crea giochi promozionali in pochi minuti</h1>
+      <p>Registra la tua attività, personalizza il brand e inizia con un periodo di prova gratuito.</p>
+      <div class="hero-pills">
+        <span>Trial incluso</span>
+        <span>Nessuna carta richiesta</span>
+        <span>QR e voucher pronti</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Registrazione negozio</h2>
+      <p class="muted">I dati potranno essere aggiornati dal pannello negozio.</p>
+
+      <form id="registerForm">
+        <div class="form-row two">
+          <div>
+            <label for="storeName">Nome attività</label>
+            <input id="storeName" type="text" required placeholder="Cose Belle">
+          </div>
+          <div>
+            <label for="storeSlug">Slug link</label>
+            <input id="storeSlug" type="text" required placeholder="cose-belle">
+          </div>
+        </div>
+
+        <label for="ownerName">Nome referente</label>
+        <input id="ownerName" type="text" required placeholder="Mario Rossi">
+
+        <div class="form-row two">
+          <div>
+            <label for="email">Email accesso</label>
+            <input id="email" type="email" autocomplete="username" required placeholder="negozio@email.it">
+          </div>
+          <div>
+            <label for="password">Password</label>
+            <input id="password" type="password" autocomplete="new-password" required placeholder="Minimo 6 caratteri">
+          </div>
+        </div>
+
+        <div class="form-row two">
+          <div>
+            <label for="phone">Telefono</label>
+            <input id="phone" type="text">
+          </div>
+          <div>
+            <label for="address">Indirizzo</label>
+            <input id="address" type="text">
+          </div>
+        </div>
+
+        <label for="logoUrl">Logo URL</label>
+        <input id="logoUrl" type="url" placeholder="https://...">
+
+        <div class="form-row two">
+          <div>
+            <label for="primaryColor">Colore primario</label>
+            <input id="primaryColor" type="color" value="#667eea">
+          </div>
+          <div>
+            <label for="secondaryColor">Colore secondario</label>
+            <input id="secondaryColor" type="color" value="#764ba2">
+          </div>
+        </div>
+
+        <label class="check">
+          <input id="termsAccepted" type="checkbox">
+          Accetto termini, privacy e uso della piattaforma in modalità trial.
+        </label>
+
+        <div id="errorBox" class="message error hidden"></div>
+        <div id="successBox" class="message success hidden"></div>
+
+        <button id="registerBtn" type="submit">Crea account negozio</button>
+        <a class="login-link" href="/store.html">Hai già un account? Accedi</a>
+      </form>
+    </section>
+  </main>
+
+  <script src="register.js"></script>
+</body>
+</html>

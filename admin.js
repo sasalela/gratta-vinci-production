@@ -17,10 +17,21 @@ const vouchersTable = document.getElementById('vouchersTable');
 const alertsTable = document.getElementById('alertsTable');
 const storesTable = document.getElementById('storesTable');
 const usersTable = document.getElementById('usersTable');
+const partnersTable = document.getElementById('partnersTable');
 const actionMessage = document.getElementById('actionMessage');
+const partnerForm = document.getElementById('partnerForm');
+const partnerFormTitle = document.getElementById('partnerFormTitle');
+const partnerIdInput = document.getElementById('partnerId');
+const partnerNameInput = document.getElementById('partnerNameInput');
+const partnerEmailInput = document.getElementById('partnerEmailInput');
+const partnerPhoneInput = document.getElementById('partnerPhoneInput');
+const partnerLogoInput = document.getElementById('partnerLogoInput');
+const partnerActiveInput = document.getElementById('partnerActiveInput');
+const cancelPartnerEditBtn = document.getElementById('cancelPartnerEditBtn');
 const storeForm = document.getElementById('storeForm');
 const storeFormTitle = document.getElementById('storeFormTitle');
 const storeIdInput = document.getElementById('storeId');
+const storePartnerInput = document.getElementById('storePartnerInput');
 const storeNameInput = document.getElementById('storeNameInput');
 const storeSlugInput = document.getElementById('storeSlugInput');
 const storeEmailInput = document.getElementById('storeEmailInput');
@@ -35,6 +46,7 @@ const userForm = document.getElementById('userForm');
 const userFormTitle = document.getElementById('userFormTitle');
 const userIdInput = document.getElementById('userId');
 const userStoreInput = document.getElementById('userStoreInput');
+const userPartnerInput = document.getElementById('userPartnerInput');
 const userNameInput = document.getElementById('userNameInput');
 const userEmailInput = document.getElementById('userEmailInput');
 const userPasswordInput = document.getElementById('userPasswordInput');
@@ -43,6 +55,7 @@ const userActiveInput = document.getElementById('userActiveInput');
 const cancelUserEditBtn = document.getElementById('cancelUserEditBtn');
 
 const state = {
+  partners: [],
   stores: [],
   users: []
 };
@@ -68,6 +81,34 @@ function formatDateOnly(value) {
 function formatDateInput(value) {
   if (!value) return '';
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function formatDateForApi(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function getSubscriptionInfo(store) {
+  if (!store.active) {
+    return { label: 'Disattivato', className: 'danger' };
+  }
+  if (!store.subscriptionExpiresAt) {
+    return { label: 'Attivo senza scadenza', className: 'success' };
+  }
+
+  const expiresAt = new Date(store.subscriptionExpiresAt);
+  const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000);
+  if (daysLeft < 0) {
+    return { label: 'Scaduto', className: 'danger' };
+  }
+  if (daysLeft <= 7) {
+    return { label: `In scadenza (${daysLeft} gg)`, className: 'warning' };
+  }
+  return { label: `Attivo (${daysLeft} gg)`, className: 'success' };
+}
+
+function renderSubscriptionBadge(store) {
+  const info = getSubscriptionInfo(store);
+  return `<span class="status-badge ${info.className}">${escapeHtml(info.label)}</span>`;
 }
 
 function slugify(value) {
@@ -189,12 +230,49 @@ function populateStoreSelect() {
     .join('');
 }
 
+function populatePartnerSelects() {
+  const options = [
+    '<option value="">Nessun gestore / negozio diretto</option>',
+    ...state.partners.map((partner) => `<option value="${partner.id}">${escapeHtml(partner.name)} (${escapeHtml(partner.email)})</option>`)
+  ].join('');
+  storePartnerInput.innerHTML = options;
+  userPartnerInput.innerHTML = [
+    '<option value="">Seleziona gestore</option>',
+    ...state.partners.map((partner) => `<option value="${partner.id}">${escapeHtml(partner.name)} (${escapeHtml(partner.email)})</option>`)
+  ].join('');
+}
+
+function renderPartners(rows) {
+  renderTable(partnersTable, [
+    { label: 'Nome', render: (row) => row.name },
+    { label: 'Email', render: (row) => row.email },
+    { label: 'Telefono', render: (row) => row.phone || '—' },
+    { label: 'Attivo', render: (row) => (row.active ? 'Sì' : 'No') },
+    { label: 'Negozi', render: (row) => row._count?.stores ?? 0 },
+    { label: 'Utenti', render: (row) => row._count?.users ?? 0 },
+    { label: 'Creato', render: (row) => formatDate(row.createdAt) },
+    {
+      label: 'Azioni',
+      html: true,
+      render: (row) => `
+        <div class="row-actions">
+          <button class="small" type="button" data-action="edit-partner" data-id="${escapeHtml(row.id)}">Modifica</button>
+          <button class="small secondary" type="button" data-action="toggle-partner" data-id="${escapeHtml(row.id)}">
+            ${row.active ? 'Disattiva' : 'Attiva'}
+          </button>
+        </div>
+      `
+    }
+  ], rows);
+}
+
 function renderStores(rows) {
   renderTable(storesTable, [
     { label: 'Nome', render: (row) => row.name },
     { label: 'Slug', render: (row) => row.slug },
     { label: 'Email', render: (row) => row.email },
-    { label: 'Attivo', render: (row) => (row.active ? 'Sì' : 'No') },
+    { label: 'Gestore', render: (row) => row.partner?.name || 'Diretto' },
+    { label: 'Stato', html: true, render: (row) => renderSubscriptionBadge(row) },
     { label: 'Scadenza', render: (row) => formatDateOnly(row.subscriptionExpiresAt) },
     { label: 'Utenti', render: (row) => row._count?.users ?? 0 },
     { label: 'Campagne', render: (row) => row._count?.campaigns ?? 0 },
@@ -204,6 +282,8 @@ function renderStores(rows) {
       render: (row) => `
         <div class="row-actions">
           <button class="small" type="button" data-action="edit-store" data-id="${escapeHtml(row.id)}">Modifica</button>
+          <button class="small" type="button" data-action="extend-store" data-id="${escapeHtml(row.id)}">+30 giorni</button>
+          <button class="small secondary" type="button" data-action="expire-store" data-id="${escapeHtml(row.id)}">Scadi</button>
           <button class="small secondary" type="button" data-action="toggle-store" data-id="${escapeHtml(row.id)}">
             ${row.active ? 'Disattiva' : 'Attiva'}
           </button>
@@ -219,6 +299,7 @@ function renderUsers(rows) {
     { label: 'Email', render: (row) => row.email },
     { label: 'Ruolo', render: (row) => row.role },
     { label: 'Negozio', render: (row) => row.store?.name || '—' },
+    { label: 'Gestore', render: (row) => row.partner?.name || '—' },
     { label: 'Attivo', render: (row) => (row.active ? 'Sì' : 'No') },
     { label: 'Creato', render: (row) => formatDate(row.createdAt) },
     {
@@ -283,9 +364,18 @@ function renderAlerts(rows) {
   ], rows);
 }
 
+function resetPartnerForm() {
+  partnerForm.reset();
+  partnerIdInput.value = '';
+  partnerActiveInput.checked = true;
+  partnerFormTitle.textContent = 'Crea gestore';
+  hide(cancelPartnerEditBtn);
+}
+
 function resetStoreForm() {
   storeForm.reset();
   storeIdInput.value = '';
+  storePartnerInput.value = '';
   storePrimaryInput.value = '#667eea';
   storeSecondaryInput.value = '#764ba2';
   storeActiveInput.checked = true;
@@ -296,8 +386,11 @@ function resetStoreForm() {
 function resetUserForm() {
   userForm.reset();
   userIdInput.value = '';
+  userPartnerInput.value = '';
   userActiveInput.checked = true;
   userRoleInput.value = 'store_owner';
+  userStoreInput.disabled = false;
+  userPartnerInput.disabled = true;
   userFormTitle.textContent = 'Crea utente negozio';
   hide(cancelUserEditBtn);
   if (state.stores[0]) {
@@ -305,11 +398,27 @@ function resetUserForm() {
   }
 }
 
+function editPartner(id) {
+  const partner = state.partners.find((item) => item.id === id);
+  if (!partner) return;
+
+  partnerIdInput.value = partner.id;
+  partnerNameInput.value = partner.name || '';
+  partnerEmailInput.value = partner.email || '';
+  partnerPhoneInput.value = partner.phone || '';
+  partnerLogoInput.value = partner.logoUrl || '';
+  partnerActiveInput.checked = Boolean(partner.active);
+  partnerFormTitle.textContent = `Modifica ${partner.name}`;
+  show(cancelPartnerEditBtn);
+  partnerNameInput.focus();
+}
+
 function editStore(id) {
   const store = state.stores.find((item) => item.id === id);
   if (!store) return;
 
   storeIdInput.value = store.id;
+  storePartnerInput.value = store.partnerId || '';
   storeNameInput.value = store.name || '';
   storeSlugInput.value = store.slug || '';
   storeEmailInput.value = store.email || '';
@@ -330,10 +439,13 @@ function editUser(id) {
 
   userIdInput.value = user.id;
   userStoreInput.value = user.storeId || '';
+  userPartnerInput.value = user.partnerId || '';
   userNameInput.value = user.name || '';
   userEmailInput.value = user.email || '';
   userPasswordInput.value = '';
   userRoleInput.value = user.role || 'store_owner';
+  userStoreInput.disabled = userRoleInput.value === 'partner_owner';
+  userPartnerInput.disabled = userRoleInput.value !== 'partner_owner';
   userActiveInput.checked = Boolean(user.active);
   userFormTitle.textContent = `Modifica ${user.name}`;
   show(cancelUserEditBtn);
@@ -346,7 +458,8 @@ async function loadDashboardData() {
   refreshBtn.textContent = 'Caricamento...';
 
   try {
-    const [stores, users, campaigns, participations, vouchers, alerts] = await Promise.all([
+    const [partners, stores, users, campaigns, participations, vouchers, alerts] = await Promise.all([
+      fetchAdminData('/api/admin/partners'),
       fetchAdminData('/api/admin/stores'),
       fetchAdminData('/api/admin/users'),
       fetchAdminData('/api/admin/campaigns'),
@@ -355,9 +468,12 @@ async function loadDashboardData() {
       fetchAdminData('/api/admin/alerts')
     ]);
 
+    state.partners = partners;
     state.stores = stores;
     state.users = users;
+    populatePartnerSelects();
     populateStoreSelect();
+    renderPartners(partners);
     renderStores(stores);
     renderUsers(users);
     renderAlerts(alerts);
@@ -372,12 +488,39 @@ async function loadDashboardData() {
   }
 }
 
+async function savePartner(event) {
+  event.preventDefault();
+  clearLoadError();
+
+  const id = partnerIdInput.value;
+  const payload = {
+    name: partnerNameInput.value.trim(),
+    email: partnerEmailInput.value.trim(),
+    phone: partnerPhoneInput.value.trim(),
+    logoUrl: partnerLogoInput.value.trim(),
+    active: partnerActiveInput.checked
+  };
+
+  try {
+    await adminApi(id ? `/api/admin/partners/${id}` : '/api/admin/partners', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(payload)
+    });
+    resetPartnerForm();
+    await loadDashboardData();
+    showActionMessage(id ? 'Gestore aggiornato.' : 'Gestore creato.');
+  } catch (error) {
+    showLoadError(error.message || 'Errore durante il salvataggio del gestore.');
+  }
+}
+
 async function saveStore(event) {
   event.preventDefault();
   clearLoadError();
 
   const id = storeIdInput.value;
   const payload = {
+    partnerId: storePartnerInput.value,
     name: storeNameInput.value.trim(),
     slug: storeSlugInput.value.trim(),
     email: storeEmailInput.value.trim(),
@@ -409,6 +552,7 @@ async function saveUser(event) {
   const id = userIdInput.value;
   const payload = {
     storeId: userStoreInput.value,
+    partnerId: userPartnerInput.value,
     name: userNameInput.value.trim(),
     email: userEmailInput.value.trim(),
     password: userPasswordInput.value,
@@ -419,6 +563,20 @@ async function saveUser(event) {
   if (!id && !payload.password) {
     showLoadError('La password è obbligatoria per creare un nuovo utente.');
     return;
+  }
+
+  if (payload.role === 'partner_owner') {
+    payload.storeId = '';
+    if (!payload.partnerId) {
+      showLoadError('Seleziona un gestore per creare l’utente gestore.');
+      return;
+    }
+  } else {
+    payload.partnerId = '';
+    if (!payload.storeId) {
+      showLoadError('Seleziona un negozio per creare l’utente negozio.');
+      return;
+    }
   }
 
   if (id && !payload.password) {
@@ -443,6 +601,10 @@ async function handleTableAction(event) {
   if (!button) return;
 
   const { action, id } = button.dataset;
+  if (action === 'edit-partner') {
+    editPartner(id);
+    return;
+  }
   if (action === 'edit-store') {
     editStore(id);
     return;
@@ -453,6 +615,14 @@ async function handleTableAction(event) {
   }
 
   try {
+    if (action === 'toggle-partner') {
+      const partner = state.partners.find((item) => item.id === id);
+      await adminApi(`/api/admin/partners/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ active: !partner.active })
+      });
+      showActionMessage(partner.active ? 'Gestore disattivato.' : 'Gestore attivato.');
+    }
     if (action === 'toggle-store') {
       const store = state.stores.find((item) => item.id === id);
       await adminApi(`/api/admin/stores/${id}`, {
@@ -460,6 +630,29 @@ async function handleTableAction(event) {
         body: JSON.stringify({ active: !store.active })
       });
       showActionMessage(store.active ? 'Negozio disattivato.' : 'Negozio attivato.');
+    }
+    if (action === 'extend-store') {
+      const store = state.stores.find((item) => item.id === id);
+      const currentExpiry = store.subscriptionExpiresAt ? new Date(store.subscriptionExpiresAt) : new Date();
+      const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+      baseDate.setDate(baseDate.getDate() + 30);
+      await adminApi(`/api/admin/stores/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          active: true,
+          subscriptionExpiresAt: formatDateForApi(baseDate)
+        })
+      });
+      showActionMessage('Abbonamento esteso di 30 giorni.');
+    }
+    if (action === 'expire-store') {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      await adminApi(`/api/admin/stores/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ subscriptionExpiresAt: formatDateForApi(yesterday) })
+      });
+      showActionMessage('Abbonamento impostato come scaduto.');
     }
     if (action === 'toggle-user') {
       const user = state.users.find((item) => item.id === id);
@@ -529,10 +722,13 @@ function logout() {
 loginBtn.addEventListener('click', login);
 refreshBtn.addEventListener('click', loadDashboardData);
 logoutBtn.addEventListener('click', logout);
+partnerForm.addEventListener('submit', savePartner);
 storeForm.addEventListener('submit', saveStore);
 userForm.addEventListener('submit', saveUser);
+cancelPartnerEditBtn.addEventListener('click', resetPartnerForm);
 cancelStoreEditBtn.addEventListener('click', resetStoreForm);
 cancelUserEditBtn.addEventListener('click', resetUserForm);
+partnersTable.addEventListener('click', handleTableAction);
 storesTable.addEventListener('click', handleTableAction);
 usersTable.addEventListener('click', handleTableAction);
 
@@ -540,6 +736,12 @@ storeNameInput.addEventListener('input', () => {
   if (!storeIdInput.value) {
     storeSlugInput.value = slugify(storeNameInput.value);
   }
+});
+
+userRoleInput.addEventListener('change', () => {
+  const isPartnerUser = userRoleInput.value === 'partner_owner';
+  userStoreInput.disabled = isPartnerUser;
+  userPartnerInput.disabled = !isPartnerUser;
 });
 
 adminPasswordInput.addEventListener('keydown', (event) => {

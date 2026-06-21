@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pannello Gestore — Gratta & Vinci</title>
+  <link rel="stylesheet" href="partner.css">
+</head>
+<body>
+  <main class="page">
+    <section id="loginSection" class="login-card">
+      <div>
+        <p class="eyebrow">Area gestore</p>
+        <h1>Gestisci i tuoi negozi clienti</h1>
+        <p>Crea negozi, assegna utenti e controlla lo stato degli abbonamenti dei clienti che gestisci.</p>
+      </div>
+      <div class="card login-box">
+        <h2>Accesso gestore</h2>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password">
+        <div id="loginError" class="message error hidden"></div>
+        <button id="loginBtn" type="button">Accedi</button>
+      </div>
+    </section>
+
+    <section id="appSection" class="hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Pannello gestore</p>
+          <h1 id="partnerName">Gestore</h1>
+          <p id="userLabel" class="muted"></p>
+        </div>
+        <div class="actions">
+          <button id="refreshBtn" type="button" class="secondary">Aggiorna</button>
+          <button id="logoutBtn" type="button" class="ghost">Esci</button>
+        </div>
+      </header>
+
+      <div id="appError" class="message error hidden"></div>
+      <div id="appSuccess" class="message success hidden"></div>
+
+      <section class="stats-grid">
+        <article class="stat-card">
+          <span>Negozi gestiti</span>
+          <strong id="statStores">0</strong>
+        </article>
+        <article class="stat-card">
+          <span>Attivi</span>
+          <strong id="statActiveStores">0</strong>
+        </article>
+        <article class="stat-card">
+          <span>Utenti negozio</span>
+          <strong id="statUsers">0</strong>
+        </article>
+      </section>
+
+      <section class="grid two">
+        <article class="card">
+          <h2>Crea negozio cliente</h2>
+          <form id="storeForm">
+            <label for="storeNameInput">Nome negozio</label>
+            <input id="storeNameInput" type="text" required>
+            <label for="storeSlugInput">Slug link</label>
+            <input id="storeSlugInput" type="text" required>
+            <label for="storeEmailInput">Email negozio</label>
+            <input id="storeEmailInput" type="email" required>
+            <label for="storePhoneInput">Telefono</label>
+            <input id="storePhoneInput" type="text">
+            <label for="storeExpiresInput">Scadenza abbonamento</label>
+            <input id="storeExpiresInput" type="date">
+            <div class="grid two compact">
+              <div>
+                <label for="storePrimaryInput">Colore primario</label>
+                <input id="storePrimaryInput" type="color" value="#667eea">
+              </div>
+              <div>
+                <label for="storeSecondaryInput">Colore secondario</label>
+                <input id="storeSecondaryInput" type="color" value="#764ba2">
+              </div>
+            </div>
+            <button type="submit">Crea negozio</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Crea utente negozio</h2>
+          <form id="userForm">
+            <label for="userStoreInput">Negozio</label>
+            <select id="userStoreInput" required></select>
+            <label for="userNameInput">Nome utente</label>
+            <input id="userNameInput" type="text" required>
+            <label for="userEmailInput">Email utente</label>
+            <input id="userEmailInput" type="email" required>
+            <label for="userPasswordInput">Password</label>
+            <input id="userPasswordInput" type="password" autocomplete="new-password" required>
+            <label for="userRoleInput">Ruolo</label>
+            <select id="userRoleInput">
+              <option value="store_owner">Titolare negozio</option>
+              <option value="staff">Staff</option>
+            </select>
+            <button type="submit">Crea utente</button>
+          </form>
+        </article>
+      </section>
+
+      <section class="card">
+        <h2>Negozi clienti</h2>
+        <div id="storesTable" class="table-wrap"></div>
+      </section>
+
+      <section class="card">
+        <h2>Utenti negozio</h2>
+        <div id="usersTable" class="table-wrap"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="partner.js"></script>
+</body>
+</html>

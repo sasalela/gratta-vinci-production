@@ -13,6 +13,12 @@ const storeName = document.getElementById('storeName');
 const userLabel = document.getElementById('userLabel');
 const appError = document.getElementById('appError');
 const appSuccess = document.getElementById('appSuccess');
+const quickCampaignTitle = document.getElementById('quickCampaignTitle');
+const quickCampaignSubtitle = document.getElementById('quickCampaignSubtitle');
+const quickPlayUrl = document.getElementById('quickPlayUrl');
+const copyQuickLinkBtn = document.getElementById('copyQuickLinkBtn');
+const quickNewCampaignBtn = document.getElementById('quickNewCampaignBtn');
+const quickInsights = document.getElementById('quickInsights');
 const campaignForm = document.getElementById('campaignForm');
 const saveCampaignBtn = document.getElementById('saveCampaignBtn');
 const createPrizeBtn = document.getElementById('createPrizeBtn');
@@ -52,6 +58,10 @@ const profilePreview = document.getElementById('profilePreview');
 const profilePreviewLogo = document.getElementById('profilePreviewLogo');
 const profilePreviewName = document.getElementById('profilePreviewName');
 const profilePreviewMeta = document.getElementById('profilePreviewMeta');
+const subscriptionBanner = document.getElementById('subscriptionBanner');
+const subscriptionTitle = document.getElementById('subscriptionTitle');
+const subscriptionText = document.getElementById('subscriptionText');
+const subscriptionDays = document.getElementById('subscriptionDays');
 
 const state = {
   campaigns: [],
@@ -89,6 +99,58 @@ function formatDate(value) {
 function formatDateOnly(value) {
   if (!value) return '';
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function formatDisplayDate(value) {
+  if (!value) return 'senza scadenza';
+  return new Date(value).toLocaleDateString('it-IT');
+}
+
+function getSubscriptionInfo(store) {
+  if (!store?.active) {
+    return {
+      status: 'danger',
+      title: 'Account disattivato',
+      text: 'Contatta l’amministratore della piattaforma per riattivare il negozio.',
+      daysLabel: 'Bloccato'
+    };
+  }
+
+  if (!store.subscriptionExpiresAt) {
+    return {
+      status: 'success',
+      title: 'Abbonamento attivo',
+      text: 'Il negozio non ha una scadenza impostata.',
+      daysLabel: 'Attivo'
+    };
+  }
+
+  const expiresAt = new Date(store.subscriptionExpiresAt);
+  const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / 86400000);
+  if (daysLeft < 0) {
+    return {
+      status: 'danger',
+      title: 'Trial scaduto',
+      text: `Scaduto il ${formatDisplayDate(store.subscriptionExpiresAt)}. Le campagne pubbliche non sono utilizzabili finché non viene rinnovato.`,
+      daysLabel: 'Scaduto'
+    };
+  }
+
+  if (daysLeft <= 7) {
+    return {
+      status: 'warning',
+      title: 'Trial in scadenza',
+      text: `Scade il ${formatDisplayDate(store.subscriptionExpiresAt)}. Mancano pochi giorni per attivare un piano.`,
+      daysLabel: `${daysLeft} gg`
+    };
+  }
+
+  return {
+    status: 'success',
+    title: 'Trial attivo',
+    text: `Scade il ${formatDisplayDate(store.subscriptionExpiresAt)}. Puoi creare campagne e materiali promozionali.`,
+    daysLabel: `${daysLeft} gg`
+  };
 }
 
 function slugify(value) {
@@ -261,6 +323,8 @@ async function loadAll() {
     storeName.textContent = me.store?.name || 'Negozio';
     userLabel.textContent = ` — ${me.user.email}`;
     populateProfileForm(me.store);
+    renderSubscriptionBanner();
+    renderOperationalDashboard();
     renderStats();
     renderCampaigns(campaigns);
     renderParticipations(participations);
@@ -268,6 +332,101 @@ async function loadAll() {
     renderAlerts(alerts);
   } catch (error) {
     setError(appError, error.message);
+  }
+}
+
+function getCampaignPlayUrl(campaign) {
+  if (!campaign || !state.store?.slug) return '';
+  return `${window.location.origin}/?store=${state.store.slug}&campaign=${campaign.slug}`;
+}
+
+function getPrimaryCampaign() {
+  const now = new Date();
+  return state.campaigns.find((campaign) => (
+    campaign.active && new Date(campaign.startDate) <= now && new Date(campaign.endDate) >= now
+  )) || state.campaigns.find((campaign) => campaign.active) || state.campaigns[0] || null;
+}
+
+function renderOperationalDashboard() {
+  const campaign = getPrimaryCampaign();
+  const openVouchers = state.vouchers.filter((voucher) => !voucher.redeemed);
+  const lowPrizes = state.campaigns.flatMap((item) => (
+    item.prizeItems
+      .filter((prize) => prize.active && prize.totalQuantity > 0 && prize.remainingQuantity <= Math.max(2, Math.ceil(prize.totalQuantity * 0.15)))
+      .map((prize) => ({ campaign: item.name, prize }))
+  ));
+
+  quickCampaignTitle.textContent = campaign ? campaign.name : 'Nessuna campagna attiva';
+  quickCampaignSubtitle.textContent = campaign
+    ? 'Link pronto da condividere o inserire nei materiali promozionali.'
+    : 'Crea una nuova campagna per iniziare a raccogliere giocate.';
+  quickPlayUrl.value = getCampaignPlayUrl(campaign);
+  copyQuickLinkBtn.disabled = !quickPlayUrl.value;
+
+  const insights = [];
+  if (openVouchers.length > 0) {
+    insights.push({
+      type: 'warning',
+      title: `${openVouchers.length} voucher da riscattare`,
+      text: 'Controlla i clienti che devono ancora ritirare il premio.',
+      action: 'Vai ai voucher',
+      tab: 'vouchers'
+    });
+  }
+  if (lowPrizes.length > 0) {
+    insights.push({
+      type: 'danger',
+      title: `${lowPrizes.length} premio/i in esaurimento`,
+      text: lowPrizes.slice(0, 2).map((item) => `${item.prize.name}: ${item.prize.remainingQuantity} rimasti`).join(' · '),
+      action: 'Gestisci premi',
+      tab: 'campaigns'
+    });
+  }
+  if (!campaign) {
+    insights.push({
+      type: 'info',
+      title: 'Crea la prima campagna',
+      text: 'Configura premio, durata e dati richiesti ai giocatori.',
+      action: 'Nuova campagna',
+      newCampaign: true
+    });
+  }
+  if (!insights.length) {
+    insights.push({
+      type: 'success',
+      title: 'Tutto sotto controllo',
+      text: 'Campagne, premi e voucher non richiedono azioni urgenti.',
+      action: 'Vedi campagne',
+      tab: 'campaigns'
+    });
+  }
+
+  quickInsights.innerHTML = insights.map((item) => `
+    <div class="quick-insight ${item.type}">
+      <strong>${escapeHtml(item.title)}</strong>
+      <span>${escapeHtml(item.text)}</span>
+      <button type="button" class="small ghost" ${item.newCampaign ? 'data-quick-new-campaign="true"' : `data-quick-tab="${escapeHtml(item.tab)}"`}>${escapeHtml(item.action)}</button>
+    </div>
+  `).join('');
+}
+
+function renderSubscriptionBanner() {
+  const info = getSubscriptionInfo(state.store);
+  subscriptionBanner.className = `subscription-banner ${info.status}`;
+  subscriptionTitle.textContent = info.title;
+  subscriptionText.textContent = info.text;
+  subscriptionDays.textContent = info.daysLabel;
+}
+
+async function copyQuickLink() {
+  if (!quickPlayUrl.value) return;
+  try {
+    await navigator.clipboard.writeText(quickPlayUrl.value);
+    showSuccess('Link gioco copiato.');
+  } catch {
+    quickPlayUrl.select();
+    document.execCommand('copy');
+    showSuccess('Link gioco copiato.');
   }
 }
 
@@ -775,6 +934,8 @@ loginBtn.addEventListener('click', login);
 refreshBtn.addEventListener('click', loadAll);
 logoutBtn.addEventListener('click', logout);
 newCampaignBtn.addEventListener('click', newCampaign);
+quickNewCampaignBtn.addEventListener('click', newCampaign);
+copyQuickLinkBtn.addEventListener('click', copyQuickLink);
 campaignForm.addEventListener('submit', saveCampaign);
 createPrizeBtn.addEventListener('click', createPrize);
 resetPrizeBtn.addEventListener('click', resetPrizeForm);
@@ -793,6 +954,18 @@ document.getElementById('campaignName').addEventListener('input', (event) => {
 
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+document.addEventListener('click', (event) => {
+  const quickTab = event.target.closest('[data-quick-tab]');
+  if (quickTab) {
+    switchTab(quickTab.dataset.quickTab);
+    return;
+  }
+
+  if (event.target.closest('[data-quick-new-campaign]')) {
+    newCampaign();
+  }
 });
 
 [profileName, profilePhone, profileAddress, profileLogoUrl, profilePrimaryColor, profileSecondaryColor].forEach((input) => {

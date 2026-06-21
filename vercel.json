@@ -64,6 +64,30 @@
     {
       "src": "redeem.css",
       "use": "@vercel/static"
+    },
+    {
+      "src": "register.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "register.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "register.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "partner.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "partner.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "partner.css",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -118,6 +142,30 @@
     {
       "src": "/redeem.css",
       "dest": "/redeem.css"
+    },
+    {
+      "src": "/register.html",
+      "dest": "/register.html"
+    },
+    {
+      "src": "/register.js",
+      "dest": "/register.js"
+    },
+    {
+      "src": "/register.css",
+      "dest": "/register.css"
+    },
+    {
+      "src": "/partner.html",
+      "dest": "/partner.html"
+    },
+    {
+      "src": "/partner.js",
+      "dest": "/partner.js"
+    },
+    {
+      "src": "/partner.css",
+      "dest": "/partner.css"
     },
     {
       "src": "/app.js",

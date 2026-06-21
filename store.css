@@ -67,6 +67,15 @@ small {
   width: 100%;
 }
 
+.register-link {
+  color: #667eea;
+  display: block;
+  font-weight: 800;
+  margin-top: 14px;
+  text-align: center;
+  text-decoration: none;
+}
+
 .app-shell {
   padding-bottom: 40px;
 }
@@ -85,10 +94,153 @@ small {
 
 .topbar-actions,
 .form-actions,
+.quick-actions,
 .voucher-box {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.subscription-banner {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dbeafe;
+  border-left: 6px solid #22c55e;
+  border-radius: 20px;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 18px 20px;
+}
+
+.subscription-banner h2 {
+  font-size: 1.35rem;
+  margin: 4px 0;
+}
+
+.subscription-banner p:last-child {
+  color: #64748b;
+}
+
+.subscription-banner strong {
+  background: #dcfce7;
+  border-radius: 999px;
+  color: #166534;
+  min-width: 92px;
+  padding: 10px 14px;
+  text-align: center;
+}
+
+.subscription-banner.warning {
+  border-left-color: #f59e0b;
+}
+
+.subscription-banner.warning strong {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.subscription-banner.danger {
+  border-left-color: #ef4444;
+}
+
+.subscription-banner.danger strong {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.operation-dashboard {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+  margin-bottom: 18px;
+}
+
+.operation-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 22px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.07);
+  padding: 22px;
+}
+
+.operation-card.featured {
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.24), transparent 35%),
+    linear-gradient(135deg, #172033, #667eea);
+  color: #fff;
+}
+
+.operation-card.featured .eyebrow,
+.operation-card.featured p {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.operation-card h2 {
+  font-size: clamp(1.55rem, 4vw, 2.4rem);
+  line-height: 1.05;
+  margin: 8px 0 10px;
+}
+
+.quick-link {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 20px 0 14px;
+  padding: 10px;
+}
+
+.quick-link input {
+  background: rgba(255, 255, 255, 0.94);
+  border: 0;
+  color: #172033;
+}
+
+.quick-actions button {
+  flex: 1;
+  min-width: 140px;
+}
+
+.quick-insights {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.quick-insight {
+  border: 1px solid #e5e7eb;
+  border-left: 5px solid #667eea;
+  border-radius: 14px;
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+}
+
+.quick-insight strong {
+  color: #172033;
+}
+
+.quick-insight span {
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.quick-insight.warning {
+  border-left-color: #f59e0b;
+}
+
+.quick-insight.danger {
+  border-left-color: #ef4444;
+}
+
+.quick-insight.success {
+  border-left-color: #22c55e;
 }
 
 .stats-grid {
@@ -567,6 +719,7 @@ th {
 @media (max-width: 900px) {
   .login-card,
   .stats-grid,
+  .operation-dashboard,
   .profile-grid,
   .form-row.two {
     grid-template-columns: 1fr;
@@ -582,6 +735,7 @@ th {
 
   .topbar-actions,
   .form-actions,
+  .quick-actions,
   .scanner-actions,
   .voucher-box {
     width: 100%;
@@ -589,6 +743,7 @@ th {
 
   .topbar-actions button,
   .form-actions button,
+  .quick-actions button,
   .scanner-actions button,
   .voucher-box button {
     flex: 1;
@@ -611,6 +766,20 @@ th {
     position: sticky;
     top: 0;
     z-index: 2;
+  }
+
+  .quick-link {
+    grid-template-columns: 1fr;
+  }
+
+  .operation-card {
+    border-radius: 18px;
+    padding: 18px;
+  }
+
+  .subscription-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .prize-row {

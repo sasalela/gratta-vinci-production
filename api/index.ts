@@ -13,7 +13,22 @@ const LoginSchema = z.object({
   password: z.string().min(6)
 });
 
+const RegisterStoreSchema = z.object({
+  storeName: z.string().min(2),
+  storeSlug: z.string().regex(/^[a-z0-9-]+$/),
+  ownerName: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(6),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  logoUrl: z.string().url().optional().or(z.literal('')),
+  primaryColor: z.string().default('#667eea'),
+  secondaryColor: z.string().default('#764ba2'),
+  termsAccepted: z.boolean()
+});
+
 const StoreSchema = z.object({
+  partnerId: z.string().optional().or(z.literal('')),
   name: z.string().min(1),
   slug: z.string().regex(/^[a-z0-9-]+$/),
   email: z.string().email(),
@@ -41,12 +56,23 @@ const UserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   name: z.string().min(1),
-  role: z.enum(['store_owner', 'staff']),
-  storeId: z.string(),
+  role: z.enum(['store_owner', 'staff', 'partner_owner']),
+  storeId: z.string().optional().or(z.literal('')),
+  partnerId: z.string().optional().or(z.literal('')),
   active: z.boolean().default(true)
 });
 
 const UserUpdateSchema = UserSchema.partial();
+
+const PartnerSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  logoUrl: z.string().url().optional().or(z.literal('')),
+  active: z.boolean().default(true)
+});
+
+const PartnerUpdateSchema = PartnerSchema.partial();
 
 const CampaignSchema = z.object({
   storeId: z.string(),
@@ -403,7 +429,95 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             email: user.email,
             name: user.name,
             role: user.role,
-            storeId: user.storeId
+            storeId: user.storeId,
+            partnerId: user.partnerId
+          }
+        }
+      });
+    }
+
+    if (path === '/api/auth/register-store' && method === 'POST') {
+      const validation = RegisterStoreSchema.safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          errors: validation.error.errors
+        });
+      }
+
+      const data = validation.data;
+      if (!data.termsAccepted) {
+        return res.status(400).json({
+          success: false,
+          error: 'Devi accettare termini e condizioni per registrarti.'
+        });
+      }
+
+      const email = data.email.toLowerCase().trim();
+      const [existingStore, existingUser] = await Promise.all([
+        prisma.store.findUnique({ where: { slug: data.storeSlug } }),
+        prisma.user.findUnique({ where: { email } })
+      ]);
+
+      if (existingStore) {
+        return res.status(409).json({
+          success: false,
+          error: 'Esiste già un negozio con questo slug. Scegli un nome link diverso.'
+        });
+      }
+
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          error: 'Esiste già un account con questa email. Accedi o usa un’altra email.'
+        });
+      }
+
+      const trialDays = Number(process.env.TRIAL_DAYS || 14);
+      const subscriptionExpiresAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
+      const created = await prisma.$transaction(async (tx) => {
+        const store = await tx.store.create({
+          data: {
+            name: data.storeName,
+            slug: data.storeSlug,
+            email,
+            phone: data.phone || null,
+            address: data.address || null,
+            logoUrl: data.logoUrl || null,
+            primaryColor: data.primaryColor,
+            secondaryColor: data.secondaryColor,
+            subscriptionExpiresAt,
+            active: true
+          } as any
+        });
+
+        const user = await tx.user.create({
+          data: {
+            email,
+            passwordHash: hashPassword(data.password),
+            name: data.ownerName,
+            role: 'store_owner',
+            storeId: store.id,
+            active: true
+          }
+        });
+
+        return { store, user };
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          token: `mock-token-${created.user.id}`,
+          trialDays,
+          store: created.store,
+          user: {
+            id: created.user.id,
+            email: created.user.email,
+            name: created.user.name,
+            role: created.user.role,
+            storeId: created.user.storeId
           }
         }
       });
@@ -992,6 +1106,203 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ success: false, error: 'Not found' });
     }
 
+    if (path.startsWith('/api/partner/')) {
+      if (!currentUser || currentUser.role !== 'partner_owner' || !currentUser.partnerId) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      const partner = await prisma.partner.findFirst({
+        where: { id: currentUser.partnerId, active: true }
+      });
+      if (!partner) {
+        return res.status(403).json({ success: false, error: 'Gestore non attivo.' });
+      }
+
+      if (path === '/api/partner/me' && method === 'GET') {
+        return res.json({
+          success: true,
+          data: {
+            user: {
+              id: currentUser.id,
+              email: currentUser.email,
+              name: currentUser.name,
+              role: currentUser.role,
+              partnerId: currentUser.partnerId
+            },
+            partner
+          }
+        });
+      }
+
+      if (path === '/api/partner/stores' && method === 'GET') {
+        const stores = await prisma.store.findMany({
+          where: { partnerId: partner.id },
+          take: ADMIN_LIST_LIMIT,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            _count: {
+              select: {
+                users: true,
+                campaigns: true,
+                vouchers: true
+              }
+            }
+          }
+        });
+
+        return res.json({ success: true, data: stores });
+      }
+
+      if (path === '/api/partner/stores' && method === 'POST') {
+        const validation = StoreSchema.omit({ partnerId: true }).safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            success: false,
+            errors: validation.error.errors
+          });
+        }
+
+        const { subscriptionExpiresAt, logoUrl, phone, address, ...storeData } = validation.data;
+        const existingStore = await prisma.store.findUnique({ where: { slug: storeData.slug } });
+        if (existingStore) {
+          return res.status(409).json({ success: false, error: 'Esiste già un negozio con questo slug.' });
+        }
+
+        const store = await prisma.store.create({
+          data: {
+            ...storeData,
+            partnerId: partner.id,
+            phone: phone || null,
+            address: address || null,
+            logoUrl: logoUrl || null,
+            subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null
+          } as any
+        });
+
+        return res.json({ success: true, data: store });
+      }
+
+      if (path.startsWith('/api/partner/stores/') && method === 'PUT') {
+        const storeId = path.split('/')[4];
+        const validation = StoreUpdateSchema.omit({ partnerId: true }).safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            success: false,
+            errors: validation.error.errors
+          });
+        }
+
+        const existingOwnedStore = await prisma.store.findFirst({
+          where: { id: storeId, partnerId: partner.id }
+        });
+        if (!existingOwnedStore) {
+          return res.status(404).json({ success: false, error: 'Negozio non trovato.' });
+        }
+
+        const { subscriptionExpiresAt, logoUrl, phone, address, ...storeData } = validation.data;
+        if (storeData.slug) {
+          const existingStore = await prisma.store.findFirst({
+            where: {
+              slug: storeData.slug,
+              id: { not: storeId }
+            }
+          });
+          if (existingStore) {
+            return res.status(409).json({ success: false, error: 'Esiste già un altro negozio con questo slug.' });
+          }
+        }
+
+        const updateData: Record<string, unknown> = { ...storeData };
+        if ('phone' in validation.data) updateData.phone = phone === '' ? null : phone;
+        if ('address' in validation.data) updateData.address = address === '' ? null : address;
+        if ('logoUrl' in validation.data) updateData.logoUrl = logoUrl === '' ? null : logoUrl;
+        if ('subscriptionExpiresAt' in validation.data) {
+          updateData.subscriptionExpiresAt = subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null;
+        }
+
+        const store = await prisma.store.update({
+          where: { id: storeId },
+          data: updateData as any
+        });
+
+        return res.json({ success: true, data: store });
+      }
+
+      if (path === '/api/partner/users' && method === 'GET') {
+        const users = await prisma.user.findMany({
+          where: {
+            store: { partnerId: partner.id },
+            role: { in: ['store_owner', 'staff'] }
+          },
+          take: ADMIN_LIST_LIMIT,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            storeId: true,
+            active: true,
+            createdAt: true,
+            store: { select: { name: true, slug: true } }
+          }
+        });
+
+        return res.json({ success: true, data: users });
+      }
+
+      if (path === '/api/partner/users' && method === 'POST') {
+        const validation = UserSchema.omit({ partnerId: true }).safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            success: false,
+            errors: validation.error.errors
+          });
+        }
+
+        const { password, storeId, ...userData } = validation.data;
+        if (userData.role === 'partner_owner') {
+          return res.status(400).json({ success: false, error: 'Il gestore non può creare altri gestori.' });
+        }
+        if (!storeId) {
+          return res.status(400).json({ success: false, error: 'Seleziona un negozio.' });
+        }
+        const store = await prisma.store.findFirst({ where: { id: storeId, partnerId: partner.id } });
+        if (!store) {
+          return res.status(400).json({ success: false, error: 'Negozio non trovato.' });
+        }
+
+        const existingUser = await prisma.user.findUnique({ where: { email: userData.email } });
+        if (existingUser) {
+          return res.status(409).json({ success: false, error: 'Esiste già un utente con questa email.' });
+        }
+
+        const user = await prisma.user.create({
+          data: {
+            ...userData,
+            email: userData.email.toLowerCase().trim(),
+            storeId,
+            partnerId: null,
+            passwordHash: hashPassword(password)
+          } as any,
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            storeId: true,
+            active: true,
+            createdAt: true,
+            store: { select: { name: true, slug: true } }
+          }
+        });
+
+        return res.json({ success: true, data: user });
+      }
+
+      return res.status(404).json({ success: false, error: 'Not found' });
+    }
+
     if (path.startsWith('/api/admin/')) {
       if (!isAdmin) {
         return res.status(403).json({ success: false, error: 'Forbidden' });
@@ -1002,6 +1313,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           take: ADMIN_LIST_LIMIT,
           orderBy: { createdAt: 'desc' },
           include: {
+            partner: { select: { id: true, name: true, email: true } },
             _count: {
               select: {
                 users: true,
@@ -1016,6 +1328,92 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.json({ success: true, data: stores });
       }
 
+      if (path === '/api/admin/partners' && method === 'GET') {
+        const partners = await prisma.partner.findMany({
+          take: ADMIN_LIST_LIMIT,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            _count: {
+              select: {
+                stores: true,
+                users: true
+              }
+            }
+          }
+        });
+
+        return res.json({ success: true, data: partners });
+      }
+
+      if (path === '/api/admin/partners' && method === 'POST') {
+        const validation = PartnerSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            success: false,
+            errors: validation.error.errors
+          });
+        }
+
+        const { phone, logoUrl, ...partnerData } = validation.data;
+        const email = partnerData.email.toLowerCase().trim();
+        const existingPartner = await prisma.partner.findUnique({ where: { email } });
+        if (existingPartner) {
+          return res.status(409).json({ success: false, error: 'Esiste già un gestore con questa email.' });
+        }
+
+        const partner = await prisma.partner.create({
+          data: {
+            name: partnerData.name,
+            email,
+            active: partnerData.active,
+            phone: phone || null,
+            logoUrl: logoUrl || null
+          }
+        });
+
+        return res.json({ success: true, data: partner });
+      }
+
+      if (path.startsWith('/api/admin/partners/') && method === 'PUT') {
+        const partnerId = path.split('/')[4];
+        const validation = PartnerUpdateSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            success: false,
+            errors: validation.error.errors
+          });
+        }
+
+        const { phone, logoUrl, ...partnerData } = validation.data;
+        if (partnerData.email) {
+          partnerData.email = partnerData.email.toLowerCase().trim();
+          const existingPartner = await prisma.partner.findFirst({
+            where: {
+              email: partnerData.email,
+              id: { not: partnerId }
+            }
+          });
+          if (existingPartner) {
+            return res.status(409).json({ success: false, error: 'Esiste già un altro gestore con questa email.' });
+          }
+        }
+
+        const updateData: Record<string, unknown> = { ...partnerData };
+        if ('phone' in validation.data) {
+          updateData.phone = phone === '' ? null : phone;
+        }
+        if ('logoUrl' in validation.data) {
+          updateData.logoUrl = logoUrl === '' ? null : logoUrl;
+        }
+
+        const partner = await prisma.partner.update({
+          where: { id: partnerId },
+          data: updateData as any
+        });
+
+        return res.json({ success: true, data: partner });
+      }
+
       if (path === '/api/admin/stores' && method === 'POST') {
         const validation = StoreSchema.safeParse(req.body);
         if (!validation.success) {
@@ -1025,7 +1423,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        const { subscriptionExpiresAt, logoUrl, phone, address, ...storeData } = validation.data;
+        const { subscriptionExpiresAt, logoUrl, phone, address, partnerId, ...storeData } = validation.data;
         const existingStore = await prisma.store.findUnique({
           where: { slug: storeData.slug }
         });
@@ -1037,9 +1435,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
+        if (partnerId) {
+          const partner = await prisma.partner.findUnique({ where: { id: partnerId } });
+          if (!partner) {
+            return res.status(400).json({ success: false, error: 'Gestore non trovato.' });
+          }
+        }
+
         const store = await prisma.store.create({
           data: {
             ...storeData,
+            partnerId: partnerId || undefined,
             phone: phone || undefined,
             address: address || undefined,
             logoUrl: logoUrl || undefined,
@@ -1060,7 +1466,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        const { subscriptionExpiresAt, logoUrl, phone, address, ...storeData } = validation.data;
+        const { subscriptionExpiresAt, logoUrl, phone, address, partnerId, ...storeData } = validation.data;
         if (storeData.slug) {
           const existingStore = await prisma.store.findFirst({
             where: {
@@ -1077,7 +1483,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
+        if (partnerId) {
+          const partner = await prisma.partner.findUnique({ where: { id: partnerId } });
+          if (!partner) {
+            return res.status(400).json({ success: false, error: 'Gestore non trovato.' });
+          }
+        }
+
         const updateData: Record<string, unknown> = { ...storeData };
+        if ('partnerId' in validation.data) {
+          updateData.partnerId = partnerId || null;
+        }
         if ('phone' in validation.data) {
           updateData.phone = phone === '' ? null : phone;
         }
@@ -1109,9 +1525,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name: true,
             role: true,
             storeId: true,
+            partnerId: true,
             active: true,
             createdAt: true,
-            store: { select: { name: true, slug: true } }
+            store: { select: { name: true, slug: true } },
+            partner: { select: { name: true, email: true } }
           }
         });
 
@@ -1127,10 +1545,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        const { password, ...userData } = validation.data;
-        const store = await prisma.store.findUnique({ where: { id: userData.storeId } });
-        if (!store) {
-          return res.status(400).json({ success: false, error: 'Negozio non trovato.' });
+        const { password, storeId, partnerId, ...userData } = validation.data;
+        if (userData.role === 'partner_owner') {
+          if (!partnerId) {
+            return res.status(400).json({ success: false, error: 'Seleziona un gestore per questo utente.' });
+          }
+          const partner = await prisma.partner.findUnique({ where: { id: partnerId } });
+          if (!partner) {
+            return res.status(400).json({ success: false, error: 'Gestore non trovato.' });
+          }
+        } else {
+          if (!storeId) {
+            return res.status(400).json({ success: false, error: 'Seleziona un negozio per questo utente.' });
+          }
+          const store = await prisma.store.findUnique({ where: { id: storeId } });
+          if (!store) {
+            return res.status(400).json({ success: false, error: 'Negozio non trovato.' });
+          }
         }
 
         const existingUser = await prisma.user.findUnique({ where: { email: userData.email } });
@@ -1144,6 +1575,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const user = await prisma.user.create({
           data: {
             ...userData,
+            email: userData.email.toLowerCase().trim(),
+            storeId: userData.role === 'partner_owner' ? null : storeId,
+            partnerId: userData.role === 'partner_owner' ? partnerId : null,
             passwordHash: hashPassword(password)
           } as any,
           select: {
@@ -1152,9 +1586,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name: true,
             role: true,
             storeId: true,
+            partnerId: true,
             active: true,
             createdAt: true,
-            store: { select: { name: true, slug: true } }
+            store: { select: { name: true, slug: true } },
+            partner: { select: { name: true, email: true } }
           }
         });
 
@@ -1171,8 +1607,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        const { password, ...userData } = validation.data;
+        const { password, storeId, partnerId, ...userData } = validation.data;
         if (userData.email) {
+          userData.email = userData.email.toLowerCase().trim();
           const existingUser = await prisma.user.findFirst({
             where: {
               email: userData.email,
@@ -1188,10 +1625,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
+        if (userData.role === 'partner_owner' || partnerId) {
+          const nextPartnerId = partnerId || undefined;
+          if (!nextPartnerId) {
+            return res.status(400).json({ success: false, error: 'Seleziona un gestore per questo utente.' });
+          }
+          const partner = await prisma.partner.findUnique({ where: { id: nextPartnerId } });
+          if (!partner) {
+            return res.status(400).json({ success: false, error: 'Gestore non trovato.' });
+          }
+        }
+
+        if ((userData.role === 'store_owner' || userData.role === 'staff' || storeId) && userData.role !== 'partner_owner') {
+          const nextStoreId = storeId || undefined;
+          if (!nextStoreId) {
+            return res.status(400).json({ success: false, error: 'Seleziona un negozio per questo utente.' });
+          }
+          const store = await prisma.store.findUnique({ where: { id: nextStoreId } });
+          if (!store) {
+            return res.status(400).json({ success: false, error: 'Negozio non trovato.' });
+          }
+        }
+
+        const relationData: Record<string, unknown> = {};
+        if ('role' in validation.data || 'storeId' in validation.data || 'partnerId' in validation.data) {
+          const isPartnerUser = userData.role === 'partner_owner' || Boolean(partnerId);
+          relationData.storeId = isPartnerUser ? null : storeId || null;
+          relationData.partnerId = isPartnerUser ? partnerId || null : null;
+        }
+
         const user = await prisma.user.update({
           where: { id: userId },
           data: {
             ...userData,
+            ...relationData,
             ...(password ? { passwordHash: hashPassword(password) } : {})
           } as any,
           select: {
@@ -1200,9 +1667,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name: true,
             role: true,
             storeId: true,
+            partnerId: true,
             active: true,
             createdAt: true,
-            store: { select: { name: true, slug: true } }
+            store: { select: { name: true, slug: true } },
+            partner: { select: { name: true, email: true } }
           }
         });
 

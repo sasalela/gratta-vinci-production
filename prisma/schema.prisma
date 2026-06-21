@@ -10,6 +10,8 @@ datasource db {
 
 model Store {
   id                    String     @id @default(cuid())
+  partnerId             String?
+  partner               Partner?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   name                  String
   slug                  String     @unique
   email                 String
@@ -25,6 +27,20 @@ model Store {
   campaigns             Campaign[]
   vouchers              Voucher[]
   alerts                Alert[]
+
+  @@index([partnerId])
+}
+
+model Partner {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  logoUrl   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  stores    Store[]
+  users     User[]
 }
 
 model Campaign {
@@ -117,9 +133,13 @@ model User {
   role         String
   storeId      String?
   store        Store?   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  partnerId    String?
+  partner      Partner? @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   redemptions  Redemption[]
+
+  @@index([partnerId])
 }
 
 model Redemption {

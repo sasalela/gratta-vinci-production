@@ -22,6 +22,8 @@
         <input id="password" type="password" autocomplete="current-password" placeholder="password">
         <div id="loginError" class="message error hidden"></div>
         <button id="loginBtn" type="button" class="primary full">Accedi</button>
+        <a href="/register.html" class="register-link">Non hai un account? Registra il tuo negozio</a>
+        <a href="/partner.html" class="register-link">Sei un gestore? Accedi all’area partner</a>
       </div>
     </section>
 
@@ -42,6 +44,39 @@
       <div id="appSuccess" class="message success hidden"></div>
 
       <div id="alertsList" class="alerts"></div>
+
+      <section id="subscriptionBanner" class="subscription-banner">
+        <div>
+          <p class="eyebrow">Abbonamento</p>
+          <h2 id="subscriptionTitle">Trial attivo</h2>
+          <p id="subscriptionText">Controllo stato abbonamento in corso.</p>
+        </div>
+        <strong id="subscriptionDays">—</strong>
+      </section>
+
+      <section class="operation-dashboard">
+        <article class="operation-card featured">
+          <div>
+            <p class="eyebrow">Azioni rapide</p>
+            <h2 id="quickCampaignTitle">Gestisci il tuo gioco</h2>
+            <p id="quickCampaignSubtitle">Crea una campagna o apri quella attiva per iniziare.</p>
+          </div>
+          <div class="quick-link">
+            <input id="quickPlayUrl" type="text" readonly placeholder="Link gioco non disponibile">
+            <button id="copyQuickLinkBtn" type="button" class="secondary">Copia link</button>
+          </div>
+          <div class="quick-actions">
+            <button id="quickNewCampaignBtn" type="button" class="primary">Nuova campagna</button>
+            <button type="button" class="ghost" data-quick-tab="vouchers">Valida voucher</button>
+            <button type="button" class="ghost" data-quick-tab="materials">Materiali promo</button>
+            <button type="button" class="ghost" data-quick-tab="profile">Profilo negozio</button>
+          </div>
+        </article>
+        <article class="operation-card">
+          <p class="eyebrow">Da controllare</p>
+          <div id="quickInsights" class="quick-insights"></div>
+        </article>
+      </section>
 
       <section class="stats-grid">
         <article class="stat-card">

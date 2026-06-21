@@ -35,9 +35,34 @@
 
       <div class="grid two">
         <div class="card">
+          <h2 id="partnerFormTitle">Crea gestore</h2>
+          <form id="partnerForm">
+            <input type="hidden" id="partnerId">
+            <label for="partnerNameInput">Nome gestore</label>
+            <input type="text" id="partnerNameInput" required>
+            <label for="partnerEmailInput">Email gestore</label>
+            <input type="email" id="partnerEmailInput" required>
+            <label for="partnerPhoneInput">Telefono</label>
+            <input type="text" id="partnerPhoneInput">
+            <label for="partnerLogoInput">Logo URL</label>
+            <input type="url" id="partnerLogoInput" placeholder="https://...">
+            <label class="check">
+              <input type="checkbox" id="partnerActiveInput" checked>
+              Gestore attivo
+            </label>
+            <div class="form-actions">
+              <button id="savePartnerBtn" type="submit">Salva gestore</button>
+              <button id="cancelPartnerEditBtn" type="button" class="secondary hidden">Annulla modifica</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
           <h2 id="storeFormTitle">Crea negozio</h2>
           <form id="storeForm">
             <input type="hidden" id="storeId">
+            <label for="storePartnerInput">Gestore opzionale</label>
+            <select id="storePartnerInput"></select>
             <label for="storeNameInput">Nome negozio</label>
             <input type="text" id="storeNameInput" required>
             <label for="storeSlugInput">Slug negozio</label>
@@ -77,6 +102,8 @@
             <input type="hidden" id="userId">
             <label for="userStoreInput">Negozio</label>
             <select id="userStoreInput" required></select>
+            <label for="userPartnerInput">Gestore</label>
+            <select id="userPartnerInput"></select>
             <label for="userNameInput">Nome utente</label>
             <input type="text" id="userNameInput" required>
             <label for="userEmailInput">Email utente</label>
@@ -88,6 +115,7 @@
             <select id="userRoleInput">
               <option value="store_owner">Titolare negozio</option>
               <option value="staff">Staff</option>
+              <option value="partner_owner">Gestore</option>
             </select>
             <label class="check">
               <input type="checkbox" id="userActiveInput" checked>
@@ -99,6 +127,11 @@
             </div>
           </form>
         </div>
+      </div>
+
+      <div class="card">
+        <h2>Gestori</h2>
+        <div id="partnersTable" class="table-wrap"></div>
       </div>
 
       <div class="card">
