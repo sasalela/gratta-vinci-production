@@ -90,6 +90,105 @@ function getGameTypeLabel(gameType) {
   return GAME_TYPE_LABELS[gameType] || gameType || 'Gratta e vinci';
 }
 
+function isGuaranteedWinEnabled() {
+  return document.getElementById('guaranteedWin')?.checked || false;
+}
+
+function getEditablePrizes() {
+  const campaign = state.campaigns.find((item) => item.id === state.editingCampaignId);
+  const savedPrizes = (campaign?.prizeItems || [])
+    .filter((prize) => prize.id !== state.editingPrizeId)
+    .map((prize) => ({
+      name: prize.name,
+      winProbability: Number(prize.winProbability || 0),
+      active: Boolean(prize.active)
+    }));
+
+  const draft = getPrizeDraft();
+  if (draft.name) {
+    savedPrizes.push({
+      name: draft.name,
+      winProbability: Number(draft.winProbability || 0),
+      active: Boolean(draft.active)
+    });
+  }
+
+  return savedPrizes;
+}
+
+function updateGuaranteedWinUi() {
+  const guaranteed = isGuaranteedWinEnabled();
+  const loseMessageLabel = document.getElementById('loseMessageLabel');
+  const loseMessageInput = document.getElementById('loseMessage');
+  const guaranteedHelp = document.getElementById('guaranteedWinHelp');
+
+  if (loseMessageLabel) {
+    loseMessageLabel.classList.toggle('hidden', guaranteed);
+  }
+  if (loseMessageInput) {
+    loseMessageInput.classList.toggle('hidden', guaranteed);
+  }
+  if (guaranteedHelp) {
+    guaranteedHelp.textContent = guaranteed
+      ? 'Ogni giocatore vince uno dei premi ancora disponibili. Le percentuali si ripartiscono tra i premi attivi.'
+      : 'Se disattiva, la somma delle probabilità premi può lasciare una quota di non vincita.';
+  }
+
+  updateProbabilitySummary();
+}
+
+function updateProbabilitySummary() {
+  const summary = document.getElementById('probabilitySummary');
+  if (!summary) return;
+
+  const prizes = getEditablePrizes().filter((prize) => prize.active && prize.winProbability > 0);
+  if (!prizes.length) {
+    summary.classList.add('hidden');
+    summary.innerHTML = '';
+    return;
+  }
+
+  const total = prizes.reduce((sum, prize) => sum + prize.winProbability, 0);
+  const guaranteed = isGuaranteedWinEnabled();
+  const loseRate = guaranteed ? 0 : Math.max(0, 100 - total);
+  const normalized = guaranteed && total > 0
+    ? prizes.map((prize) => ({
+        ...prize,
+        effective: Math.round((prize.winProbability / total) * 1000) / 10
+      }))
+    : prizes.map((prize) => ({ ...prize, effective: prize.winProbability }));
+
+  summary.classList.remove('hidden');
+  summary.innerHTML = `
+    <strong>${guaranteed ? 'Ripartizione premi (vincita garantita)' : 'Ripartizione probabilità'}</strong>
+    <ul>
+      ${normalized.map((prize) => `<li>${escapeHtml(prize.name)}: ${prize.effective}%</li>`).join('')}
+    </ul>
+    ${guaranteed
+      ? '<p class="ok">Ogni giocatore vince uno di questi premi finché c’è stock disponibile.</p>'
+      : loseRate > 0
+        ? `<p class="ok">Probabilità di non vincere: ${Math.round(loseRate * 10) / 10}%</p>`
+        : '<p class="ok">Con questa configurazione ogni giocata assegna un premio se c’è stock.</p>'}
+    ${!guaranteed && total > 100 ? `<p class="warning">Attenzione: la somma premi (${total}%) supera il 100%.</p>` : ''}
+  `;
+}
+
+function validateCampaignProbabilities() {
+  const prizes = getEditablePrizes().filter((prize) => prize.active && prize.winProbability > 0);
+  const total = prizes.reduce((sum, prize) => sum + prize.winProbability, 0);
+
+  if (isGuaranteedWinEnabled()) {
+    if (!prizes.length) {
+      throw new Error('Con vincita garantita serve almeno un premio attivo con probabilità maggiore di 0.');
+    }
+    return;
+  }
+
+  if (total > 100) {
+    throw new Error(`La somma delle probabilità dei premi attivi (${total}%) supera il 100%.`);
+  }
+}
+
 function show(el) {
   el.classList.remove('hidden');
 }
@@ -635,7 +734,7 @@ function renderCampaigns(campaigns) {
           <button type="button" class="secondary small" data-edit-campaign="${escapeHtml(campaign.id)}">Modifica</button>
         </div>
         <div class="campaign-meta">
-          <span>Gioco: ${escapeHtml(getGameTypeLabel(campaign.gameType))}</span>
+          <span>${campaign.guaranteedWin ? '<span class="campaign-badge">Vincita garantita</span>' : ''}Gioco: ${escapeHtml(getGameTypeLabel(campaign.gameType))}</span>
           <span>Periodo: ${formatDate(campaign.startDate)} - ${formatDate(campaign.endDate)}</span>
           <span>Limite: ${campaign.playLimitMode === 'per_day' ? '1 volta al giorno' : '1 volta per campagna'}</span>
         </div>
@@ -722,6 +821,8 @@ function resetCampaignForm() {
   document.getElementById('voucherValidityDays').value = 15;
   document.getElementById('loseMessage').value = 'Nessun premio questa volta.';
   document.getElementById('gameType').value = 'scratch_card';
+  document.getElementById('guaranteedWin').checked = false;
+  updateGuaranteedWinUi();
   document.querySelector('[data-field="name"]').checked = true;
   document.querySelector('[data-field="email"]').checked = true;
   prizeList.innerHTML = '<p class="muted">Inserisci qui sotto il primo premio della nuova campagna.</p>';
@@ -745,7 +846,9 @@ function editCampaign(campaignId) {
   document.getElementById('gameType').value = campaign.gameType || 'scratch_card';
   document.getElementById('voucherValidityDays').value = campaign.voucherValidityDays || 15;
   document.getElementById('loseMessage').value = campaign.loseMessage || 'Nessun premio questa volta.';
+  document.getElementById('guaranteedWin').checked = Boolean(campaign.guaranteedWin);
   document.getElementById('campaignActive').checked = campaign.active;
+  updateGuaranteedWinUi();
 
   document.querySelectorAll('[data-field]').forEach((input) => {
     const field = (campaign.customerFields || []).find((item) => item.key === input.dataset.field);
@@ -775,6 +878,7 @@ function renderPrizeEditor(campaign) {
   prizeList.querySelectorAll('[data-edit-prize]').forEach((button) => {
     button.addEventListener('click', () => editPrize(button.dataset.editPrize));
   });
+  updateProbabilitySummary();
 }
 
 async function saveCampaign(event) {
@@ -800,6 +904,8 @@ async function saveCampaign(event) {
     const wasCreating = !state.editingCampaignId;
     if (wasCreating) {
       validatePrizeDraft();
+    } else {
+      validateCampaignProbabilities();
     }
 
     const campaign = {
@@ -812,6 +918,7 @@ async function saveCampaign(event) {
       voucherValidityDays: Number(document.getElementById('voucherValidityDays').value || 15),
       loseMessage: document.getElementById('loseMessage').value.trim() || 'Nessun premio questa volta.',
       gameType: document.getElementById('gameType').value,
+      guaranteedWin: document.getElementById('guaranteedWin').checked,
       active: document.getElementById('campaignActive').checked,
       customerFields: getCustomerFields()
     };
@@ -880,6 +987,7 @@ function resetPrizeForm() {
   document.getElementById('prizeProbability').value = 10;
   document.getElementById('prizeActive').checked = true;
   createPrizeBtn.textContent = state.editingCampaignId ? 'Aggiungi premio' : 'Aggiungi premio alla campagna';
+  updateProbabilitySummary();
 }
 
 function editPrize(prizeId) {
@@ -898,6 +1006,7 @@ function editPrize(prizeId) {
   document.getElementById('prizeActive').checked = Boolean(prize.active);
   createPrizeBtn.textContent = 'Salva modifiche premio';
   document.getElementById('prizeName').focus();
+  updateProbabilitySummary();
 }
 
 async function savePrizeForCampaign(campaignId, prizeId = state.editingPrizeId) {
@@ -1076,6 +1185,11 @@ document.getElementById('campaignName').addEventListener('input', (event) => {
   if (!state.editingCampaignId) {
     document.getElementById('campaignSlug').value = slugify(event.target.value);
   }
+});
+document.getElementById('guaranteedWin').addEventListener('change', updateGuaranteedWinUi);
+['prizeName', 'prizeProbability', 'prizeActive'].forEach((id) => {
+  document.getElementById(id).addEventListener('input', updateProbabilitySummary);
+  document.getElementById(id).addEventListener('change', updateProbabilitySummary);
 });
 
 document.querySelectorAll('.tab').forEach((tab) => {

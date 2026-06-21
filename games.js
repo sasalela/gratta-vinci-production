@@ -329,21 +329,43 @@ window.PromoGames = (() => {
     }
 
     buildSegments() {
-      const prizes = (this.context.campaignConfig?.prizes || []).slice(0, 4);
+      const guaranteedWin = Boolean(this.context.campaignConfig?.guaranteedWin);
+      const availablePrizes = (this.context.campaignConfig?.prizes || []).filter((prize) => prize.available !== false);
+      const palette = ['#667eea', '#764ba2', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#14b8a6'];
       const loseLabel = 'Riprova';
-      const palette = ['#667eea', '#764ba2', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4'];
+
+      const formatLabel = (prize) => {
+        const raw = `${prize.emoji || ''} ${prize.name}`.trim();
+        return raw.length > 16 ? `${raw.slice(0, 15)}…` : raw;
+      };
+
+      if (guaranteedWin && availablePrizes.length > 0) {
+        return availablePrizes.map((prize, index) => ({
+          label: formatLabel(prize),
+          kind: 'win',
+          prizeId: prize.id,
+          prizeName: prize.name,
+          color: palette[index % palette.length]
+        }));
+      }
+
+      const prizes = availablePrizes.slice(0, 5);
       const segments = [{ label: loseLabel, kind: 'lose' }];
       prizes.forEach((prize) => {
         segments.push({
-          label: `${prize.emoji || ''} ${prize.name}`.trim(),
+          label: formatLabel(prize),
           kind: 'win',
+          prizeId: prize.id,
           prizeName: prize.name
         });
       });
-      while (segments.length < 6) {
+
+      const minSegments = Math.max(6, segments.length);
+      while (segments.length < minSegments) {
         segments.push({ label: loseLabel, kind: 'lose' });
       }
-      return segments.slice(0, 6).map((segment, index) => ({
+
+      return segments.map((segment, index) => ({
         ...segment,
         color: palette[index % palette.length]
       }));
@@ -353,14 +375,21 @@ window.PromoGames = (() => {
       const { gameData } = this.context;
       const slice = (Math.PI * 2) / this.segments.length;
       let targetIndex = this.segments.findIndex((segment) => segment.kind === 'lose');
+
       if (gameData.won) {
         targetIndex = this.segments.findIndex((segment) => (
-          segment.kind === 'win' && segment.prizeName === gameData.prize?.name
+          segment.kind === 'win' && segment.prizeId && segment.prizeId === gameData.prize?.id
         ));
+        if (targetIndex < 0) {
+          targetIndex = this.segments.findIndex((segment) => (
+            segment.kind === 'win' && segment.prizeName === gameData.prize?.name
+          ));
+        }
         if (targetIndex < 0) {
           targetIndex = this.segments.findIndex((segment) => segment.kind === 'win');
         }
       }
+
       if (targetIndex < 0) targetIndex = 0;
       const segmentCenter = targetIndex * slice + slice / 2;
       return Math.PI * 1.5 - segmentCenter;
@@ -392,8 +421,8 @@ window.PromoGames = (() => {
         ctx.rotate(start + slice / 2);
         ctx.textAlign = 'center';
         ctx.fillStyle = '#ffffff';
-        ctx.font = '700 13px Arial';
-        ctx.fillText(segment.label.slice(0, 14), radius * 0.62, 5);
+        ctx.font = `${this.segments.length > 6 ? 11 : 13}px Arial`;
+        ctx.fillText(segment.label.slice(0, this.segments.length > 6 ? 12 : 16), radius * 0.62, 5);
         ctx.restore();
       });
 
@@ -522,10 +551,14 @@ window.PromoGames = (() => {
     start() {
       const primary = this.context.campaignConfig?.store?.primaryColor || '#667eea';
       const secondary = this.context.campaignConfig?.store?.secondaryColor || '#764ba2';
+      const guaranteedWin = Boolean(this.context.campaignConfig?.guaranteedWin);
+      const prompt = guaranteedWin
+        ? 'Scegli una scatola: ogni partecipante vince uno dei premi disponibili.'
+        : 'Solo una scatola contiene il tuo esito. Quale scegli?';
 
       this.container.innerHTML = `
         <div class="mystery-shell" style="--gift-primary:${primary};--gift-secondary:${secondary}">
-          <p class="mystery-prompt">Solo una scatola contiene il tuo esito. Quale scegli?</p>
+          <p class="mystery-prompt">${prompt}</p>
           <div class="mystery-grid" id="mysteryGrid">
             ${Array.from({ length: this.boxCount }, (_, index) => `
               <button type="button" class="mystery-box" data-box-index="${index}" aria-label="Scatola ${index + 1}">
@@ -569,9 +602,13 @@ window.PromoGames = (() => {
       this.opened = true;
 
       const { gameData, campaignConfig } = this.context;
+      const guaranteedWin = Boolean(campaignConfig?.guaranteedWin);
       const text = gameData.won
         ? `${gameData.prize.emoji || ''} ${gameData.prize.name}`.trim()
         : campaignConfig?.loseMessage || gameData.loseMessage;
+      const decoyPrizes = (campaignConfig?.prizes || [])
+        .filter((prize) => prize.id !== gameData.prize?.id)
+        .map((prize) => prize.name);
       const boxes = [...this.grid.querySelectorAll('.mystery-box')];
 
       boxes.forEach((box, index) => {
@@ -593,9 +630,10 @@ window.PromoGames = (() => {
             `;
           } else {
             box.classList.add('opened', 'empty');
+            const decoy = decoyPrizes[(index + selectedIndex) % Math.max(decoyPrizes.length, 1)] || 'Vuota';
             box.innerHTML = `
-              <span class="mystery-box-top">📦</span>
-              <span class="mystery-box-label">Vuota</span>
+              <span class="mystery-box-top">${guaranteedWin && decoyPrizes.length ? '✨' : '📦'}</span>
+              <span class="mystery-box-label">${guaranteedWin && decoyPrizes.length ? decoy : 'Vuota'}</span>
             `;
           }
         });
@@ -603,7 +641,9 @@ window.PromoGames = (() => {
         if (gameData.won) this.spawnConfetti();
 
         this.revealEl.innerHTML = `
-          <p class="eyebrow">${gameData.won ? 'Hai scelto quella giusta' : 'Esito giocata'}</p>
+          <p class="eyebrow">${gameData.won
+            ? (guaranteedWin ? 'Hai vinto questo premio' : 'Hai scelto quella giusta')
+            : 'Esito giocata'}</p>
           <strong>${text}</strong>
         `;
         this.revealEl.classList.remove('hidden');

@@ -55,6 +55,7 @@ model Campaign {
   customerFields      Json            @default("[]")
   playLimitMode       String          @default("per_campaign")
   loseMessage         String          @default("Nessun premio questa volta.")
+  guaranteedWin       Boolean         @default(false)
   voucherValidityDays Int             @default(15)
   active              Boolean         @default(true)
   startDate           DateTime        @db.Date

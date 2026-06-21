@@ -432,6 +432,58 @@ textarea:focus {
   margin-top: 12px;
 }
 
+.field-help {
+  color: var(--muted);
+  display: block;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  margin: 6px 0 12px;
+}
+
+.probability-summary {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  margin: 8px 0 14px;
+  padding: 12px 14px;
+}
+
+.probability-summary strong {
+  color: var(--ink);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.probability-summary ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.probability-summary li {
+  margin: 4px 0;
+}
+
+.probability-summary .warning {
+  color: #b45309;
+  margin-top: 8px;
+}
+
+.probability-summary .ok {
+  color: #047857;
+  margin-top: 8px;
+}
+
+.campaign-badge {
+  background: #ecfdf5;
+  border-radius: 999px;
+  color: #047857;
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 800;
+  margin-right: 8px;
+  padding: 4px 10px;
+}
+
 .checkbox-grid input,
 .switch-row input {
   width: auto;

@@ -115,6 +115,7 @@ const StoreCampaignSchema = z.object({
   customerFields: z.array(CustomerFieldSchema).default([]),
   playLimitMode: z.enum(['per_campaign', 'per_day']).default('per_campaign'),
   loseMessage: z.string().min(1).default('Nessun premio questa volta.'),
+  guaranteedWin: z.boolean().default(false),
   voucherValidityDays: z.number().int().min(1).max(365).default(15),
   active: z.boolean().default(true),
   startDate: z.string(),
@@ -397,7 +398,59 @@ async function createPrizesExhaustedAlert(storeId: string, campaignId: string, c
   });
 }
 
-async function pickInventoryPrize(campaignId: string) {
+async function tryClaimPrize(prizeId: string) {
+  const prize = await prisma.prize.findFirst({ where: { id: prizeId } });
+  if (!prize) return null;
+
+  const updated = await prisma.prize.updateMany({
+    where: {
+      id: prizeId,
+      remainingQuantity: { gt: 0 }
+    },
+    data: {
+      remainingQuantity: { decrement: 1 }
+    }
+  });
+
+  if (updated.count === 1) {
+    return prize;
+  }
+
+  return null;
+}
+
+async function getCampaignPrizeProbabilitySummary(campaignId: string) {
+  const prizes = await prisma.prize.findMany({
+    where: { campaignId, active: true, winProbability: { gt: 0 } },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  const totalProbability = prizes.reduce((sum, prize) => sum + prize.winProbability, 0);
+  return { prizes, totalProbability };
+}
+
+async function validateCampaignPrizeProbabilities(campaignId: string, guaranteedWin: boolean) {
+  const { prizes, totalProbability } = await getCampaignPrizeProbabilitySummary(campaignId);
+
+  if (guaranteedWin) {
+    const stockedPrizes = prizes.filter((prize) => prize.totalQuantity > 0);
+    if (!stockedPrizes.length) {
+      return 'Con vincita garantita serve almeno un premio attivo con probabilità maggiore di 0.';
+    }
+    if (totalProbability <= 0) {
+      return 'Con vincita garantita imposta una probabilità maggiore di 0 su almeno un premio.';
+    }
+    return null;
+  }
+
+  if (totalProbability > 100) {
+    return `La somma delle probabilità dei premi attivi (${totalProbability}%) supera il 100%.`;
+  }
+
+  return null;
+}
+
+async function pickInventoryPrize(campaignId: string, guaranteedWin = false) {
   const prizes = await prisma.prize.findMany({
     where: {
       campaignId,
@@ -408,25 +461,49 @@ async function pickInventoryPrize(campaignId: string) {
     orderBy: { createdAt: 'asc' }
   });
 
+  if (!prizes.length) {
+    return null;
+  }
+
+  if (guaranteedWin) {
+    const totalWeight = prizes.reduce((sum, prize) => sum + prize.winProbability, 0);
+    const pickFromPool = async (pool: typeof prizes) => {
+      if (!pool.length) return null;
+
+      if (totalWeight <= 0) {
+        const randomIndex = Math.floor(Math.random() * pool.length);
+        return tryClaimPrize(pool[randomIndex].id);
+      }
+
+      let random = Math.random() * totalWeight;
+      for (const prize of pool) {
+        random -= prize.winProbability;
+        if (random <= 0) {
+          const claimed = await tryClaimPrize(prize.id);
+          if (claimed) return claimed;
+          break;
+        }
+      }
+
+      for (const prize of pool) {
+        const claimed = await tryClaimPrize(prize.id);
+        if (claimed) return claimed;
+      }
+
+      return null;
+    };
+
+    return pickFromPool(prizes);
+  }
+
   const random = Math.random() * 100;
   let cumulative = 0;
 
   for (const prize of prizes) {
     cumulative += prize.winProbability;
     if (random <= cumulative) {
-      const updated = await prisma.prize.updateMany({
-        where: {
-          id: prize.id,
-          remainingQuantity: { gt: 0 }
-        },
-        data: {
-          remainingQuantity: { decrement: 1 }
-        }
-      });
-
-      if (updated.count === 1) {
-        return prize;
-      }
+      const claimed = await tryClaimPrize(prize.id);
+      if (claimed) return claimed;
     }
   }
 
@@ -676,9 +753,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           prizeItems: {
             where: { active: true },
             select: {
+              id: true,
               name: true,
               emoji: true,
               description: true,
+              winProbability: true,
               remainingQuantity: true
             }
           }
@@ -708,6 +787,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           slug: campaign.slug,
           description: campaign.description,
           gameType: campaign.gameType,
+          guaranteedWin: campaign.guaranteedWin,
           customerFields: getCustomerFields(campaign.customerFields),
           loseMessage: campaign.loseMessage,
           startDate: campaign.startDate,
@@ -720,9 +800,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             secondaryColor: campaign.store.secondaryColor
           },
           prizes: campaign.prizeItems.map((prize) => ({
+            id: prize.id,
             name: prize.name,
             emoji: prize.emoji,
             description: prize.description,
+            winProbability: prize.winProbability,
             available: prize.remainingQuantity > 0
           }))
         }
@@ -823,7 +905,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const selectedPrize = await pickInventoryPrize(campaign.id);
+      const selectedPrize = await pickInventoryPrize(campaign.id, campaign.guaranteedWin);
+
+      if (campaign.guaranteedWin && !selectedPrize) {
+        return res.status(410).json({
+          success: false,
+          error: 'Tutti i premi sono esauriti. Riprova più tardi o contatta il negozio.'
+        });
+      }
+
       const expiresAt = new Date(
         now.getTime() + campaign.voucherValidityDays * 24 * 60 * 60 * 1000
       );
@@ -1125,6 +1215,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               endDate: new Date(endDate)
             }
           });
+
+          const probabilityError = await validateCampaignPrizeProbabilities(
+            campaignId,
+            Boolean(data.guaranteedWin)
+          );
+          if (probabilityError) {
+            return res.status(400).json({ success: false, error: probabilityError });
+          }
+
           const campaign = await prisma.campaign.findFirst({
             where: { id: campaignId, storeId }
           });
@@ -1157,6 +1256,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           } as any
         });
 
+        const probabilityError = await validateCampaignPrizeProbabilities(
+          campaignId,
+          campaign.guaranteedWin
+        );
+        if (probabilityError) {
+          await prisma.prize.delete({ where: { id: prize.id } });
+          return res.status(400).json({ success: false, error: probabilityError });
+        }
+
         return res.json({ success: true, data: prize });
       }
 
@@ -1188,6 +1296,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const prize = await prisma.prize.findFirst({
           where: { id: prizeId, campaignId }
         });
+
+        const probabilityError = await validateCampaignPrizeProbabilities(
+          campaignId,
+          campaign.guaranteedWin
+        );
+        if (probabilityError) {
+          return res.status(400).json({ success: false, error: probabilityError });
+        }
 
         return res.json({ success: true, data: prize });
       }

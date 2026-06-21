@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pannello Negozio — Gratta & Vinci</title>
-  <link rel="stylesheet" href="store.css">
+  <link rel="stylesheet" href="store.css?v=2.3.0">
 </head>
 <body>
   <main class="page">
@@ -182,7 +182,13 @@
                 <small>Giorni validità dopo la vincita</small>
               </div>
             </div>
-            <label for="loseMessage">Messaggio se non vince</label>
+            <label class="switch-row">
+              <input id="guaranteedWin" type="checkbox">
+              Vincita garantita (ogni giocatore vince uno dei premi disponibili)
+            </label>
+            <small id="guaranteedWinHelp" class="field-help">Se attiva, le probabilità si ripartiscono solo tra i premi. Se disattiva, la somma premi può lasciare una quota di non vincita.</small>
+            <div id="probabilitySummary" class="probability-summary hidden"></div>
+            <label for="loseMessage" id="loseMessageLabel">Messaggio se non vince</label>
             <input id="loseMessage" type="text" value="Nessun premio questa volta.">
           </section>
 
@@ -379,6 +385,6 @@
     </section>
   </main>
 
-  <script src="store.js"></script>
+  <script src="store.js?v=2.3.0"></script>
 </body>
 </html>
