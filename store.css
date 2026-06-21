@@ -385,9 +385,13 @@ button.full {
   border-radius: 12px;
   display: grid;
   gap: 8px;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto auto;
   padding: 10px 12px;
   width: 100%;
+}
+
+.prize-row.inactive-prize {
+  opacity: 0.65;
 }
 
 .prize-form {

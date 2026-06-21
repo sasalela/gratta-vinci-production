@@ -162,6 +162,7 @@
             </div>
             <div id="prizeList" class="prize-list"></div>
             <div id="prizeForm" class="prize-form">
+              <input id="editingPrizeId" type="hidden">
               <div class="form-row two">
                 <div>
                   <label for="prizeName">Nome premio</label>
@@ -180,11 +181,24 @@
                   <input id="prizeQuantity" type="number" min="0" value="10">
                 </div>
                 <div>
+                  <label for="prizeRemainingQuantity">Quantità residua</label>
+                  <input id="prizeRemainingQuantity" type="number" min="0" placeholder="Uguale al totale">
+                </div>
+              </div>
+              <div class="form-row two">
+                <div>
                   <label for="prizeProbability">Percentuale vincita</label>
                   <input id="prizeProbability" type="number" min="0" max="100" value="10">
                 </div>
+                <label class="switch-row">
+                  <input id="prizeActive" type="checkbox" checked>
+                  Premio attivo
+                </label>
               </div>
-              <button id="createPrizeBtn" type="button" class="secondary">Aggiungi premio</button>
+              <div class="form-actions">
+                <button id="createPrizeBtn" type="button" class="secondary">Aggiungi premio</button>
+                <button id="resetPrizeBtn" type="button" class="ghost">Nuovo premio</button>
+              </div>
             </div>
           </section>
 

@@ -16,6 +16,7 @@ const appSuccess = document.getElementById('appSuccess');
 const campaignForm = document.getElementById('campaignForm');
 const saveCampaignBtn = document.getElementById('saveCampaignBtn');
 const createPrizeBtn = document.getElementById('createPrizeBtn');
+const resetPrizeBtn = document.getElementById('resetPrizeBtn');
 const newCampaignBtn = document.getElementById('newCampaignBtn');
 const cancelEditBtn = document.getElementById('cancelEditBtn');
 const cancelEditBtnBottom = document.getElementById('cancelEditBtnBottom');
@@ -47,6 +48,7 @@ const state = {
   vouchers: [],
   alerts: [],
   editingCampaignId: null,
+  editingPrizeId: null,
   store: null,
   scannerStream: null,
   scannerFrame: null
@@ -368,6 +370,7 @@ function renderAlerts(rows) {
 
 function resetCampaignForm() {
   state.editingCampaignId = null;
+  state.editingPrizeId = null;
   editorTitle.textContent = 'Nuova campagna';
   editorSubtitle.textContent = 'Compila campagna e primo premio: verranno salvati insieme.';
   campaignForm.reset();
@@ -377,6 +380,7 @@ function resetCampaignForm() {
   document.querySelector('[data-field="name"]').checked = true;
   document.querySelector('[data-field="email"]').checked = true;
   prizeList.innerHTML = '<p class="muted">Inserisci qui sotto il primo premio della nuova campagna.</p>';
+  resetPrizeForm();
   prizeForm.classList.remove('disabled-block');
 }
 
@@ -408,17 +412,23 @@ function editCampaign(campaignId) {
 
 function renderPrizeEditor(campaign) {
   prizeForm.classList.remove('disabled-block');
+  resetPrizeForm();
   if (!campaign.prizeItems.length) {
     prizeList.innerHTML = '<p class="muted">Nessun premio inserito. Aggiungi almeno un premio per poter assegnare voucher.</p>';
     return;
   }
   prizeList.innerHTML = campaign.prizeItems.map((prize) => (
-    `<div class="prize-row">
+    `<div class="prize-row ${prize.active ? '' : 'inactive-prize'}">
       <strong>${escapeHtml(prize.emoji || '')} ${escapeHtml(prize.name)}</strong>
       <span>${prize.remainingQuantity}/${prize.totalQuantity} disponibili</span>
       <span>${prize.winProbability}% vincita</span>
+      <span>${prize.active ? 'Attivo' : 'Disattivo'}</span>
+      <button type="button" class="secondary small" data-edit-prize="${escapeHtml(prize.id)}">Modifica</button>
     </div>`
   )).join('');
+  prizeList.querySelectorAll('[data-edit-prize]').forEach((button) => {
+    button.addEventListener('click', () => editPrize(button.dataset.editPrize));
+  });
 }
 
 async function saveCampaign(event) {
@@ -483,13 +493,16 @@ async function saveCampaign(event) {
 }
 
 function getPrizeDraft() {
+  const totalQuantity = Number(document.getElementById('prizeQuantity').value || 0);
+  const remainingValue = document.getElementById('prizeRemainingQuantity').value;
   return {
     name: document.getElementById('prizeName').value.trim(),
     emoji: document.getElementById('prizeEmoji').value.trim(),
     description: document.getElementById('prizeDescription').value.trim(),
-    totalQuantity: Number(document.getElementById('prizeQuantity').value || 0),
+    totalQuantity,
+    remainingQuantity: remainingValue === '' ? totalQuantity : Number(remainingValue),
     winProbability: Number(document.getElementById('prizeProbability').value || 0),
-    active: true
+    active: document.getElementById('prizeActive').checked
   };
 }
 
@@ -501,16 +514,53 @@ function validatePrizeDraft() {
   if (prize.totalQuantity < 1) {
     throw new Error('La quantità premi deve essere almeno 1.');
   }
+  if (prize.remainingQuantity < 0 || prize.remainingQuantity > prize.totalQuantity) {
+    throw new Error('La quantità residua deve essere tra 0 e la quantità totale.');
+  }
   if (prize.winProbability <= 0 || prize.winProbability > 100) {
     throw new Error('La percentuale di vincita deve essere tra 1 e 100.');
   }
   return prize;
 }
 
-async function savePrizeForCampaign(campaignId) {
+function resetPrizeForm() {
+  state.editingPrizeId = null;
+  document.getElementById('editingPrizeId').value = '';
+  document.getElementById('prizeName').value = '';
+  document.getElementById('prizeEmoji').value = '';
+  document.getElementById('prizeDescription').value = '';
+  document.getElementById('prizeQuantity').value = 10;
+  document.getElementById('prizeRemainingQuantity').value = '';
+  document.getElementById('prizeProbability').value = 10;
+  document.getElementById('prizeActive').checked = true;
+  createPrizeBtn.textContent = state.editingCampaignId ? 'Aggiungi premio' : 'Aggiungi premio alla campagna';
+}
+
+function editPrize(prizeId) {
+  const campaign = state.campaigns.find((item) => item.id === state.editingCampaignId);
+  const prize = campaign?.prizeItems.find((item) => item.id === prizeId);
+  if (!prize) return;
+
+  state.editingPrizeId = prize.id;
+  document.getElementById('editingPrizeId').value = prize.id;
+  document.getElementById('prizeName').value = prize.name || '';
+  document.getElementById('prizeEmoji').value = prize.emoji || '';
+  document.getElementById('prizeDescription').value = prize.description || '';
+  document.getElementById('prizeQuantity').value = prize.totalQuantity;
+  document.getElementById('prizeRemainingQuantity').value = prize.remainingQuantity;
+  document.getElementById('prizeProbability').value = prize.winProbability;
+  document.getElementById('prizeActive').checked = Boolean(prize.active);
+  createPrizeBtn.textContent = 'Salva modifiche premio';
+  document.getElementById('prizeName').focus();
+}
+
+async function savePrizeForCampaign(campaignId, prizeId = state.editingPrizeId) {
   const prize = validatePrizeDraft();
-  return api(`/api/store/campaigns/${campaignId}/prizes`, {
-    method: 'POST',
+  const path = prizeId
+    ? `/api/store/campaigns/${campaignId}/prizes/${prizeId}`
+    : `/api/store/campaigns/${campaignId}/prizes`;
+  return api(path, {
+    method: prizeId ? 'PUT' : 'POST',
     body: JSON.stringify(prize)
   });
 }
@@ -523,13 +573,12 @@ async function createPrize() {
       throw new Error('Per una nuova campagna compila il premio e poi clicca “Salva campagna”.');
     }
 
+    const wasEditingPrize = Boolean(state.editingPrizeId);
     await savePrizeForCampaign(campaignId);
     await loadAll();
     editCampaign(campaignId);
-    document.getElementById('prizeName').value = '';
-    document.getElementById('prizeEmoji').value = '';
-    document.getElementById('prizeDescription').value = '';
-    showSuccess('Premio aggiunto correttamente.');
+    resetPrizeForm();
+    showSuccess(wasEditingPrize ? 'Premio aggiornato correttamente.' : 'Premio aggiunto correttamente.');
   } catch (error) {
     setError(appError, error.message);
   }
@@ -656,6 +705,7 @@ logoutBtn.addEventListener('click', logout);
 newCampaignBtn.addEventListener('click', newCampaign);
 campaignForm.addEventListener('submit', saveCampaign);
 createPrizeBtn.addEventListener('click', createPrize);
+resetPrizeBtn.addEventListener('click', resetPrizeForm);
 validateVoucherBtn.addEventListener('click', validateVoucher);
 redeemVoucherBtn.addEventListener('click', redeemVoucher);
 scanQrBtn.addEventListener('click', startQrScanner);
