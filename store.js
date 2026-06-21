@@ -333,7 +333,9 @@ async function api(path, options = {}) {
     if (rawMessage.includes('Unique constraint failed') || rawMessage.includes('storeId') && rawMessage.includes('slug')) {
       throw new Error('Esiste già una campagna con questo slug. Cambia il nome o lo slug link.');
     }
-    throw new Error(rawMessage);
+    const error = new Error(rawMessage);
+    error.status = response.status;
+    throw error;
   }
   return payload.data;
 }
@@ -588,6 +590,14 @@ async function loadAll() {
     renderVouchers(vouchers);
     renderAlerts(alerts);
   } catch (error) {
+    if (error.status === 401 || error.status === 403) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(USER_KEY);
+      hide(appSection);
+      show(loginSection);
+      setError(loginError, 'Sessione scaduta. Accedi di nuovo.');
+      return;
+    }
     setError(appError, error.message);
   }
 }
