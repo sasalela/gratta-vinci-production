@@ -272,8 +272,12 @@ function renderCampaigns(campaigns) {
 
   campaignCards.innerHTML = campaigns.map((campaign) => {
     const playUrl = `${window.location.origin}/?store=${state.store?.slug || 'negozio'}&campaign=${campaign.slug}`;
+    const stats = campaign.stats || {};
     const prizes = campaign.prizeItems.map((prize) => (
-      `<span class="pill">${escapeHtml(prize.emoji || '')} ${escapeHtml(prize.name)} ${prize.remainingQuantity}/${prize.totalQuantity} · ${prize.winProbability}%</span>`
+      `<div class="prize-stock">
+        <strong>${escapeHtml(prize.emoji || '')} ${escapeHtml(prize.name)}</strong>
+        <span>${prize.remainingQuantity}/${prize.totalQuantity} disponibili · ${prize.winProbability}% vincita</span>
+      </div>`
     )).join('') || '<span class="muted">Nessun premio inserito</span>';
     return `
       <article class="campaign-card">
@@ -288,9 +292,34 @@ function renderCampaigns(campaigns) {
         <div class="campaign-meta">
           <span>Periodo: ${formatDate(campaign.startDate)} - ${formatDate(campaign.endDate)}</span>
           <span>Limite: ${campaign.playLimitMode === 'per_day' ? '1 volta al giorno' : '1 volta per campagna'}</span>
-          <span>Giocate: ${campaign._count?.participations ?? 0}</span>
-          <span>Voucher: ${campaign._count?.vouchers ?? 0}</span>
         </div>
+        <div class="campaign-stats">
+          <div>
+            <span>Giocate</span>
+            <strong>${stats.totalPlays ?? campaign._count?.participations ?? 0}</strong>
+          </div>
+          <div>
+            <span>Vincite</span>
+            <strong>${stats.wins ?? 0}</strong>
+          </div>
+          <div>
+            <span>% reale</span>
+            <strong>${stats.realWinRate ?? 0}%</strong>
+          </div>
+          <div>
+            <span>Voucher emessi</span>
+            <strong>${stats.vouchersIssued ?? campaign._count?.vouchers ?? 0}</strong>
+          </div>
+          <div>
+            <span>Riscattati</span>
+            <strong>${stats.vouchersRedeemed ?? 0}</strong>
+          </div>
+          <div>
+            <span>Premi residui</span>
+            <strong>${stats.prizesRemaining ?? 0}/${stats.prizesTotal ?? 0}</strong>
+          </div>
+        </div>
+        <h4 class="stock-title">Disponibilità premi</h4>
         <div class="prize-list compact">${prizes}</div>
         <div class="play-link">
           <input readonly value="${escapeHtml(playUrl)}">

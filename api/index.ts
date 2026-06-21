@@ -677,6 +677,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           orderBy: { createdAt: 'desc' },
           include: {
             prizeItems: { orderBy: { createdAt: 'asc' } },
+            participations: { select: { outcome: true } },
+            vouchers: { select: { redeemed: true } },
             _count: {
               select: {
                 participations: true,
@@ -686,7 +688,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         });
 
-        return res.json({ success: true, data: campaigns });
+        const data = campaigns.map((campaign) => {
+          const totalPlays = campaign._count.participations;
+          const wins = campaign.participations.filter((participation) => participation.outcome === 'won').length;
+          const vouchersIssued = campaign._count.vouchers;
+          const vouchersRedeemed = campaign.vouchers.filter((voucher) => voucher.redeemed).length;
+          const prizesTotal = campaign.prizeItems.reduce((sum, prize) => sum + prize.totalQuantity, 0);
+          const prizesRemaining = campaign.prizeItems.reduce((sum, prize) => sum + prize.remainingQuantity, 0);
+
+          return {
+            ...campaign,
+            participations: undefined,
+            vouchers: undefined,
+            stats: {
+              totalPlays,
+              wins,
+              losses: Math.max(totalPlays - wins, 0),
+              realWinRate: totalPlays ? Math.round((wins / totalPlays) * 1000) / 10 : 0,
+              vouchersIssued,
+              vouchersRedeemed,
+              vouchersOpen: Math.max(vouchersIssued - vouchersRedeemed, 0),
+              prizesTotal,
+              prizesRemaining,
+              prizesAssigned: Math.max(prizesTotal - prizesRemaining, 0)
+            }
+          };
+        });
+
+        return res.json({ success: true, data });
       }
 
       if (path === '/api/store/campaigns' && method === 'POST') {
