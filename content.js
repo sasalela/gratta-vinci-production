@@ -45,12 +45,15 @@ const promoCanvas         = document.getElementById('promoCanvas');
 const playUrlLabel        = document.getElementById('playUrlLabel');
 const storyNav            = document.getElementById('storyNav');
 const storyFrameLabel     = document.getElementById('storyFrameLabel');
+const printConceptRow     = document.getElementById('printConceptRow');
+const printConceptSelect  = document.getElementById('printConceptSelect');
 
 const state = {
   store: null,
   campaigns: [],
   storyFrame: 0,
-  lastRenderedFormat: 'a4'
+  lastRenderedFormat: 'a4',
+  printConcept: 'D'   // D=festa/sagra (default) · A=vincita · B=fortuna · C=scarsità
 };
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
@@ -82,6 +85,11 @@ function updateStoryNav(fmt) {
     storyFrameLabel.textContent = STORY_FRAMES[state.storyFrame].label;
   } else {
     hide(storyNav);
+  }
+  // Concept selector only relevant for the A4 print poster
+  if (printConceptRow) {
+    if (fmt === 'a4') show(printConceptRow);
+    else hide(printConceptRow);
   }
 }
 
@@ -311,18 +319,130 @@ function drawStepCircle(ctx, cx, cy, r, num, primary) {
 // ─── PRINT renderer — Volantino A4 (1240×1754) ────────────────────────────────
 // Zone layout: header band → hero headline → prize band → QR section → footer
 
+// ─── M3A: Dynamic print layout engine ────────────────────────────────────────
+
+/**
+ * Compute A4 zone boundaries dynamically based on real content.
+ * Returns: { headerEnd, heroEnd, prizeEnd, qrEnd, qrH, qrSz, prizeMaxLines, footerH }
+ *
+ * Strategy (priority order):
+ *   1. headerH  — fixed 10.5%
+ *   2. footerH  — 7.5% if expiresText, 4.5% otherwise
+ *   3. prizeH   — content-aware by prize text length
+ *   4. heroH    — content-aware by headline length, min 20%
+ *   5. qrH      — all remaining space
+ *   6. qrSz     — max(W×0.28, min(W×0.36, qrH×0.55))
+ */
+function computePrintLayout(data, W, H) {
+  const headline     = (data.headline     || '').trim();
+  const subtitle     = (data.subtitle     || '').trim();
+  const campaignName = (data.campaignName || '').trim();
+  const prizeText    = (data.prizeText    || '').trim();
+  const expiresText  = (data.expiresText  || '').trim();
+
+  // 1. Header — always fixed: logo + store name
+  const headerH = Math.round(H * 0.105);
+
+  // 2. Footer — compact when no expiry to free space for QR
+  const footerH = expiresText ? Math.round(H * 0.075) : Math.round(H * 0.045);
+
+  // 3. Prize band — grows with text length to prevent font shrinking
+  let prizeH = Math.round(H * 0.10);    // no prize
+  if (prizeText) {
+    const pLen = prizeText.length;
+    if      (pLen <= 20) prizeH = Math.round(H * 0.15);   // 1 line at full size
+    else if (pLen <= 40) prizeH = Math.round(H * 0.19);   // 2 lines at full size
+    else                 prizeH = Math.round(H * 0.22);   // 3 lines (maxLines: 3)
+  }
+
+  // 4. Hero — content-aware, min 20%, max 38%
+  const headlineSz   = Math.round(W * 0.088);
+  const avgCharW     = headlineSz * 0.52;
+  const charsPerLine = Math.max(1, Math.floor((W * 0.84) / avgCharW));
+  const hlLines      = Math.min(2, Math.ceil(headline.length / charsPerLine) || 1);
+  const lineH        = Math.round(headlineSz * 1.08);
+  const badgeH       = campaignName ? Math.round(W * 0.032) + 24 : 0;
+  const subH         = subtitle ? Math.round(W * 0.024 * 1.5 * 2) + 12 : 0;
+  const contentH     = badgeH + hlLines * lineH + subH;
+  const heroH        = Math.max(
+    Math.round(H * 0.20),              // min: 20% for visual breathing room
+    Math.min(Math.round(H * 0.38), contentH + 110)  // max: 38%
+  );
+
+  // 5. QR zone — everything remaining
+  const qrH = H - headerH - heroH - prizeH - footerH;
+
+  // 6. QR image size — 28–36% of width, bounded by available height
+  const qrSz = Math.round(Math.max(W * 0.28, Math.min(W * 0.36, qrH * 0.55)));
+
+  // 7. Prize maxLines — allow 3 lines for longer texts to avoid truncation
+  const prizeMaxLines = prizeText.length > 40 ? 3 : 2;
+
+  return {
+    headerEnd:  headerH,
+    heroEnd:    headerH + heroH,
+    prizeEnd:   headerH + heroH + prizeH,
+    qrEnd:      H - footerH,
+    qrH,
+    qrSz,
+    prizeMaxLines,
+    heroH,
+    prizeH,
+    footerH,
+  };
+}
+
+// ─── Game-psychology copy helpers ────────────────────────────────────────────
+//
+// These functions generate headlines and labels that trigger the game mindset:
+// curiosity, "I might have won", desire to scan NOW — not promotional language.
+//
+// Rule: the person glancing for 2 seconds should think "Voglio provare"
+// NOT "Interessante promozione".
+
+/**
+ * Build a question-format headline that creates immediate curiosity.
+ * "🍺 HAI VINTO BIRRA?" beats "VINCI BIRRA GRATIS" every time —
+ * the question implies the win has ALREADY happened, triggering desire to find out.
+ */
+function buildGameHeadline(prizeText) {
+  if (!prizeText?.trim()) return '🎯 SCOPRI IL TUO PREMIO';
+
+  const stripped   = prizeText.replace(/\p{Emoji_Presentation}\s*/gu, '').trim();
+  // Strip common Italian stop words to isolate the key prize noun(s)
+  const STOP       = new Set(['di','del','della','dello','per','una','uno','il','la','lo',
+                               'le','gli','un','con','su','da','tra','fra','al','ai','agli',
+                               'alle','e','o','ma','in','a','se']);
+  const words      = stripped.split(/\s+/).filter(Boolean);
+  const keyWords   = words.filter(w => w.length >= 2 && !STOP.has(w.toLowerCase()));
+  const hook       = (keyWords.slice(0, 2).join(' ') || words.slice(0, 2).join(' ')).toUpperCase();
+  const firstEmoji = (prizeText.match(/\p{Emoji_Presentation}/gu) ?? [])[0] ?? '🎁';
+
+  return `${firstEmoji} HAI VINTO ${hook}?`;
+}
+
+/**
+ * Build a game-style label for the area above the QR code.
+ * Replaces generic "Scansiona il QR code e partecipa" —
+ * the QR is the BUTTON to enter the game, not just a technical element.
+ */
+function buildGameQrLabel(prizeText) {
+  return prizeText?.trim() ? 'SCOPRI SE HAI VINTO' : 'TENTA LA FORTUNA';
+}
+
 function renderPrint(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
   const { primary, secondary, headline, subtitle, cta, prizeText,
     storeName, campaignName, expiresText, logoImage } = data;
   const cx = W / 2;
 
+  // M3A: dynamic zones — replaces fixed 5-zone proportions
+  const layout = computePrintLayout(data, W, H);
   const z = {
-    headerEnd:  Math.round(H * 0.115),   // 202px
-    heroEnd:    Math.round(H * 0.43),    // 754px
-    prizeEnd:   Math.round(H * 0.61),    // 1070px
-    qrEnd:      Math.round(H * 0.915),   // 1605px
-    // footer: qrEnd → H
+    headerEnd: layout.headerEnd,
+    heroEnd:   layout.heroEnd,
+    prizeEnd:  layout.prizeEnd,
+    qrEnd:     layout.qrEnd,
   };
 
   // ── ZONE 1: HEADER BAND (brand gradient) ──────────────────────────────────
@@ -331,14 +451,6 @@ function renderPrint(ctx, canvas, qrImage, data) {
   hg.addColorStop(1, secondary);
   ctx.fillStyle = hg;
   ctx.fillRect(0, 0, W, z.headerEnd);
-
-  // decorative circles in header
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  [[0.88, 0.5, 120], [0.06, 0.5, 90]].forEach(([rx, ry, r]) => {
-    ctx.beginPath();
-    ctx.arc(W * rx, z.headerEnd * ry, r, 0, Math.PI * 2);
-    ctx.fill();
-  });
 
   // Logo in header (left-ish, vertically centered)
   const hLSz = Math.round(z.headerEnd * 0.6);
@@ -356,58 +468,34 @@ function renderPrint(ctx, canvas, qrImage, data) {
   ctx.fillText(snTxt, hLX + hLSz + 20, z.headerEnd / 2);
   ctx.textBaseline = 'alphabetic';
 
-  // ── ZONE 2: HERO SECTION (white, headline + campaign badge) ───────────────
+  // ── ZONE 2: HERO SECTION (white, headline only — no brochure decoration) ──
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, z.headerEnd, W, z.heroEnd - z.headerEnd);
 
-  // Subtle diagonal decoration lines
-  ctx.strokeStyle = hexToRgba(primary, 0.05);
-  ctx.lineWidth = 40;
-  for (let i = -2; i < 5; i++) {
-    ctx.beginPath();
-    ctx.moveTo(W * i * 0.22, z.headerEnd);
-    ctx.lineTo(W * i * 0.22 + W * 0.18, z.heroEnd);
-    ctx.stroke();
-  }
+  // Game-psychology headline — creates curiosity and desire to win ("Voglio provare")
+  // NOT "Vinci Birra Gratis" (promotional) but "🍺 HAI VINTO BIRRA?" (game).
+  // Campaign-name eyebrow removed: it added zero scan-rate value and competed
+  // with the headline. The headline is the single curiosity hook.
+  const printHeadline = prizeText ? buildGameHeadline(prizeText) : headline;
 
-  let hy = z.headerEnd + Math.round((z.heroEnd - z.headerEnd) * 0.1);
-
-  // Campaign badge
-  if (campaignName) {
-    ctx.font = `700 ${Math.round(W * 0.022)}px ${FONT}`;
-    const cBadgeText = campaignName.length > 38 ? campaignName.slice(0, 37) + '…' : campaignName;
-    const cbW = Math.min(ctx.measureText(cBadgeText).width + 52, W * 0.72);
-    const cbH = Math.round(W * 0.032);
-    roundedRect(ctx, cx - cbW / 2, hy, cbW, cbH, cbH / 2);
-    ctx.fillStyle = hexToRgba(secondary, 0.12);
-    ctx.fill();
-    ctx.strokeStyle = hexToRgba(secondary, 0.28);
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.fillStyle = secondary;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(cBadgeText, cx, hy + cbH / 2);
-    hy += cbH + Math.round((z.heroEnd - z.headerEnd) * 0.06);
-    ctx.textBaseline = 'top';
-  }
-
-  // Headline — very large
+  // Headline — vertically centered in hero, very large, maximum curiosity
+  const heroBandH = z.heroEnd - z.headerEnd;
+  let hy = z.headerEnd + Math.round(heroBandH * (subtitle ? 0.16 : 0.24));
   hy = drawTextBlock(ctx, {
-    text: headline, x: cx, y: hy,
-    maxWidth: W * 0.84,
-    maxHeight: Math.round((z.heroEnd - z.headerEnd) * 0.55),
-    startSize: Math.round(W * 0.088), minSize: 42,
+    text: printHeadline, x: cx, y: hy,
+    maxWidth: W * 0.86,
+    maxHeight: Math.round(heroBandH * 0.62),
+    startSize: Math.round(W * 0.092), minSize: 42,
     weight: 900, color: '#0f172a', maxLines: 2, lineRatio: 1.08
   });
   hy += 18;
 
-  // Subtitle if present
+  // Subtitle — only if it carries urgency/desire (user-controlled). Otherwise skipped.
   if (subtitle) {
     drawTextBlock(ctx, {
       text: subtitle, x: cx, y: hy,
       maxWidth: W * 0.7,
-      maxHeight: Math.round((z.heroEnd - z.headerEnd) * 0.15),
+      maxHeight: Math.round(heroBandH * 0.15),
       startSize: Math.round(W * 0.024), minSize: 18,
       weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.5
     });
@@ -429,13 +517,13 @@ function renderPrint(ctx, canvas, qrImage, data) {
     ctx.fill();
   }
 
-  // "VINCI SUBITO" label
+  // Prize band eyebrow — game-style, not promotional
   const pBandH = z.prizeEnd - z.heroEnd;
   ctx.font = `800 ${Math.round(W * 0.026)}px ${FONT}`;
   ctx.fillStyle = 'rgba(255,255,255,0.72)';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText('VINCI SUBITO', cx, z.heroEnd + Math.round(pBandH * 0.08));
+  ctx.fillText('🎯 PREMIO ISTANTANEO', cx, z.heroEnd + Math.round(pBandH * 0.08));
 
   // Prize text — HUGE white
   if (prizeText) {
@@ -443,8 +531,8 @@ function renderPrint(ctx, canvas, qrImage, data) {
       text: prizeText, x: cx, y: z.heroEnd + Math.round(pBandH * 0.22),
       maxWidth: W * 0.88,
       maxHeight: Math.round(pBandH * 0.6),
-      startSize: Math.round(W * 0.072), minSize: 38,
-      weight: 900, color: '#ffffff', maxLines: 2, lineRatio: 1.1
+      startSize: Math.round(W * 0.072), minSize: 34,
+      weight: 900, color: '#ffffff', maxLines: layout.prizeMaxLines, lineRatio: 1.1
     });
   } else {
     ctx.font = `900 ${Math.round(W * 0.054)}px ${FONT}`;
@@ -469,46 +557,748 @@ function renderPrint(ctx, canvas, qrImage, data) {
   ctx.fillStyle = '#fafbff';
   ctx.fillRect(0, z.prizeEnd, W, z.qrEnd - z.prizeEnd);
 
-  // Thin brand top accent line
-  ctx.fillStyle = primary;
-  ctx.fillRect(W * 0.06, z.prizeEnd, W * 0.88, 3);
-
   const qrSecH   = z.qrEnd - z.prizeEnd;
-  const qrSz     = Math.round(Math.min(W * 0.36, qrSecH * 0.52));
+  const qrSz     = layout.qrSz;   // M3A: from computePrintLayout
   const qrPad    = Math.round(qrSz * 0.065);
   const ctaBtnH  = Math.round(W * 0.052);
   const qrLabelH = Math.round(W * 0.026);
-  const totalQrH = qrLabelH + 16 + qrSz + qrPad * 2 + 16 + ctaBtnH;
+  // M3A fix: prevent qrCard (white box) from overlapping qrTitle text.
+  const qrGap    = Math.max(16, qrPad + 4);
+  const totalQrH = qrLabelH + qrGap + qrSz + qrPad * 2 + 16 + ctaBtnH;
   const qrStartY = z.prizeEnd + (qrSecH - totalQrH) / 2;
 
-  // "Scansiona il codice QR e gioca" label
-  ctx.font = `700 ${qrLabelH}px ${FONT}`;
-  ctx.fillStyle = '#475569';
+  // Gamification urgency tag — drawn in the breathing room above the QR block.
+  // Uses existing empty space, no structural layout change.
+  // Urgency = "PREMI LIMITATI", expiry date, or default "TENTATIVO GRATUITO".
+  const urgencyLine = expiresText
+    ? `⏰ Scade: ${expiresText.replace(/valido fino al\s*/i, '').trim().toUpperCase()}`
+    : '⚡ TENTATIVO GRATUITO  ·  PREMI IMMEDIATI';
+  const urgSz = Math.round(W * 0.017);
+  const urgY  = z.prizeEnd + Math.round(qrSecH * 0.07);
+  ctx.font = `700 ${urgSz}px ${FONT}`;
+  ctx.fillStyle = hexToRgba(primary, 0.85);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText('Scansiona il QR code e partecipa', cx, qrStartY);
+  ctx.fillText(urgencyLine, cx, urgY);
+  ctx.textBaseline = 'alphabetic';
 
-  drawQrBlock(ctx, qrImage, cx, qrStartY + qrLabelH + 16, qrSz, qrPad, Math.round(W * 0.02));
-  drawCtaButton(ctx, cta, cx, qrStartY + qrLabelH + 16 + qrSz + qrPad * 2 + 18, W * 0.58, ctaBtnH, primary, secondary);
+  // QR label — game-style: the QR is the BUTTON to enter the game
+  ctx.font = `700 ${qrLabelH}px ${FONT}`;
+  ctx.fillStyle = '#1e293b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(buildGameQrLabel(prizeText), cx, qrStartY);
+
+  drawQrBlock(ctx, qrImage, cx, qrStartY + qrLabelH + qrGap, qrSz, qrPad, Math.round(W * 0.02));
+  drawCtaButton(ctx, cta, cx, qrStartY + qrLabelH + qrGap + qrSz + qrPad * 2 + 18, W * 0.58, ctaBtnH, primary, secondary);
 
   // ── ZONE 5: FOOTER (dark) ─────────────────────────────────────────────────
+  // Scan-rate optimised: the lowest-attention zone is converted into a friction
+  // reducer ("è veloce e gratis" → lowers the perceived cost of scanning), not a
+  // duplicate of the expiry (already shown as urgency near the QR) or the store
+  // name (already in the header). Store name kept tiny only to satisfy branding.
   ctx.fillStyle = '#0f172a';
   ctx.fillRect(0, z.qrEnd, W, H - z.qrEnd);
 
   const footerCy = z.qrEnd + (H - z.qrEnd) / 2;
-  if (expiresText) {
-    ctx.font = `500 ${Math.round(W * 0.018)}px ${FONT}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(expiresText, cx, footerCy - 12);
-  }
-  ctx.font = `700 ${Math.round(W * 0.018)}px ${FONT}`;
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+
+  // Friction reducer — main footer line: makes scanning feel effortless
+  ctx.font = `800 ${Math.round(W * 0.02)}px ${FONT}`;
+  ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(storeName, cx, footerCy + (expiresText ? 12 : 0));
+  ctx.fillText('Bastano 10 secondi · Scopri subito se hai vinto', cx, footerCy - 13);
+
+  // Store name — minimal brand presence only
+  ctx.font = `600 ${Math.round(W * 0.015)}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText(storeName, cx, footerCy + 16);
   ctx.textBaseline = 'alphabetic';
+}
+
+// ─── A4 GAME CONCEPTS — built from scratch, optimised for 3-second scan ───────
+//
+// KPI: probability that a passer-by at a shop window scans the QR within 3s.
+// These do NOT look like flyers/ads — they look like instant-win games.
+// Three distinct psychological drivers:
+//   A · Vincita immediata  — "you already won, reveal it"
+//   B · Fortuna            — "try your luck, spin to win"
+//   C · Scarsità           — "few prizes left, grab yours now"
+//
+// Shared rule: only elements that raise scan probability survive.
+
+function seededRandom(seed) {
+  let s = seed >>> 0;
+  return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+}
+
+// Festive confetti scattered over a background (stable across renders)
+function drawConfetti(ctx, W, H, colors, count = 80) {
+  const rnd = seededRandom(20260623);
+  for (let i = 0; i < count; i++) {
+    const x = rnd() * W, y = rnd() * H;
+    const s = 8 + rnd() * 18;
+    const rot = rnd() * Math.PI;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.globalAlpha = 0.12 + rnd() * 0.22;
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fillRect(-s / 2, -s / 4, s, s / 2);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Wheel-of-fortune motif (segmented circle) used by Concept B
+function drawWheel(ctx, cx, cy, r, colA, colB) {
+  const segs = 10;
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * Math.PI * 2 - Math.PI / 2;
+    const a1 = ((i + 1) / segs) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, a0, a1);
+    ctx.closePath();
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.95)' : hexToRgba(colB, 0.92);
+    ctx.fill();
+  }
+  // rim
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.lineWidth = Math.max(6, r * 0.06); ctx.strokeStyle = '#ffffff'; ctx.stroke();
+  // hub
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.14, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+  // pointer at top
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.1, cy - r - 6);
+  ctx.lineTo(cx + r * 0.1, cy - r - 6);
+  ctx.lineTo(cx, cy - r + r * 0.18);
+  ctx.closePath();
+  ctx.fillStyle = colA; ctx.fill();
+}
+
+// Depletion / scarcity bar used by Concept C (nearly empty = urgency)
+function drawDepletionBar(ctx, x, y, w, h, ratioLeft, accent) {
+  roundedRect(ctx, x, y, w, h, h / 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fill();
+  const fillW = Math.max(h, w * ratioLeft);
+  roundedRect(ctx, x, y, fillW, h, h / 2);
+  ctx.fillStyle = accent; ctx.fill();
+}
+
+// Remove pictographic emoji from text that is rendered very large — at poster
+// sizes color-emoji glyph metrics are unreliable and can overlap adjacent letters.
+function stripEmoji(s) {
+  return String(s || '').replace(/\p{Extended_Pictographic}/gu, '').replace(/\s+/g, ' ').trim();
+}
+
+// ── Conversion-driven visual hierarchy for A4 concepts ───────────────────────
+//
+// Font sizes are sized for ONE goal: QR scans. Strict, enforced ordering:
+//   Premio > CTA > Nome Negozio > QR Label > Scadenza
+//
+// Hard rules:
+//   • No important text (premio/CTA/negozio) under 45px on A4.
+//   • Store name never under 60% of the CTA size.
+//   • Prize always strictly larger than the CTA, even for long prize names.
+//   • Spare space goes to premio → CTA → negozio first, QR last.
+function computeA4Hierarchy(data, W) {
+  const prizeLen = (stripEmoji(data.prizeText) || 'UN PREMIO').length;
+
+  // CTA — the second most visible element (the action verb near the QR)
+  const ctaSize = Math.round(W * 0.056);                       // ~69px @1240
+
+  // Store name — always clearly legible: ≥45px AND ≥60% of CTA
+  const storeSize = Math.max(45, Math.round(W * 0.042), Math.round(ctaSize * 0.62)); // ~52px
+
+  // QR label — helper caption, below the store name
+  const qrLabelSize = Math.round(W * 0.032);                   // ~40px
+
+  // Expiry / urgency footnote — smallest
+  const expirySize = Math.round(W * 0.024);                    // ~30px
+
+  // Prize — dominant. Shrinks with length but never reaches the CTA size.
+  let prizeSize =
+      prizeLen <= 14 ? Math.round(W * 0.125)   // ~155
+    : prizeLen <= 24 ? Math.round(W * 0.103)   // ~128
+    : prizeLen <= 40 ? Math.round(W * 0.086)   // ~107
+    :                  Math.round(W * 0.072);  // ~89
+  prizeSize = Math.max(prizeSize, ctaSize + 14);
+
+  return { prizeSize, ctaSize, storeSize, qrLabelSize, expirySize };
+}
+
+// Log + verify the numeric hierarchy before drawing (localhost only).
+function logA4Hierarchy(h, concept) {
+  const order = [
+    ['Premio',       h.prizeSize],
+    ['CTA',          h.ctaSize],
+    ['Nome Negozio', h.storeSize],
+    ['QR Label',     h.qrLabelSize],
+    ['Scadenza',     h.expirySize],
+  ];
+  let ok = true;
+  for (let i = 1; i < order.length; i++) if (order[i][1] >= order[i - 1][1]) ok = false;
+  const ruleStore = h.storeSize >= 45 && h.storeSize >= h.ctaSize * 0.6;
+  const ruleMin   = h.prizeSize >= 45 && h.ctaSize >= 45 && h.storeSize >= 45;
+
+  console.group(`[A4 Hierarchy] Concept ${concept}  ${ok && ruleStore && ruleMin ? '✅' : '❌'}`);
+  order.forEach(([k, v]) => console.log(`  ${k.padEnd(13)} ${v}px`));
+  console.log(`  Ordine Premio>CTA>Negozio>QRLabel>Scadenza: ${ok ? 'PASS' : 'FAIL'}`);
+  console.log(`  Negozio ≥45px e ≥60% CTA: ${ruleStore ? 'PASS' : 'FAIL'}`);
+  console.log(`  Testi importanti ≥45px:   ${ruleMin ? 'PASS' : 'FAIL'}`);
+  console.groupEnd();
+  return ok && ruleStore && ruleMin;
+}
+
+// ── Concept A — VINCITA IMMEDIATA ─────────────────────────────────────────────
+// Looks like an already-scratched winning ticket. Dark + gold = "jackpot".
+function renderPrintWinA(ctx, canvas, qrImage, data) {
+  const W = canvas.width, H = canvas.height, cx = W / 2;
+  const { prizeText, storeName, expiresText, logoImage } = data;
+  const GOLD = '#f6c945', DARK = '#0b1020';
+  const prize = stripEmoji(prizeText) || 'UN PREMIO';
+  const h = computeA4Hierarchy(data, W);
+
+  // Background + warm spotlight behind the prize
+  ctx.fillStyle = DARK; ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(cx, H * 0.38, 30, cx, H * 0.38, W * 0.9);
+  glow.addColorStop(0, hexToRgba(GOLD, 0.30));
+  glow.addColorStop(1, 'rgba(11,16,32,0)');
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+
+  // ── Store name — prominent, never a footnote ──
+  let y = Math.round(H * 0.05);
+  if (logoImage) {
+    const ls = Math.round(W * 0.08);
+    drawLogo(ctx, logoImage, cx - ls / 2, y, ls, GOLD, 12);
+    y += ls + 14;
+  }
+  ctx.font = `800 ${h.storeSize}px ${FONT}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText((storeName || '').toUpperCase(), cx, y);
+  y += Math.round(h.storeSize * 1.25);
+
+  // "HAI VINTO" eyebrow — frames the win as already happened (sized as CTA)
+  ctx.font = `900 ${h.ctaSize}px ${FONT}`;
+  ctx.fillStyle = GOLD;
+  ctx.fillText('HAI VINTO', cx, y);
+  y += Math.round(h.ctaSize * 1.12);
+  ctx.textBaseline = 'alphabetic';
+
+  // ── PRIZE — the single most visible element ──
+  y = drawTextBlock(ctx, {
+    text: prize, x: cx, y,
+    maxWidth: W * 0.9, maxHeight: H * 0.26,
+    startSize: h.prizeSize, minSize: h.ctaSize + 8,
+    weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.02
+  });
+  y += Math.round(H * 0.012);
+
+  // Curiosity twist
+  ctx.font = `600 ${h.expirySize}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('…o forse no. Scoprilo adesso.', cx, y);
+  y += Math.round(h.expirySize * 1.6);
+  ctx.textBaseline = 'alphabetic';
+
+  // ── Winning-ticket panel with the QR (large but below the prize) ──
+  const qrSz   = Math.round(W * 0.38);
+  const pad    = Math.round(qrSz * 0.08);
+  const cardW  = Math.round(W * 0.66);
+  const cardH  = pad + h.ctaSize + pad * 0.6 + qrSz + pad * 2 + pad;
+  const cardX  = cx - cardW / 2;
+  const cardY  = Math.round(H * 0.45);
+
+  // Guiding chevron between prize and card — fills space AND drives eye to QR
+  const chevY = y + Math.round((cardY - y) * 0.34);
+  ctx.strokeStyle = hexToRgba(GOLD, 0.85);
+  ctx.lineWidth = Math.round(W * 0.012);
+  ctx.lineCap = 'round';
+  const chW = Math.round(W * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(cx - chW, chevY); ctx.lineTo(cx, chevY + chW * 0.7); ctx.lineTo(cx + chW, chevY);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  roundedRect(ctx, cardX, cardY, cardW, cardH, 28);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.setLineDash([18, 12]);
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 5;
+  roundedRect(ctx, cardX + 13, cardY + 13, cardW - 26, cardH - 26, 20); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── CTA — second most visible element ──
+  ctx.font = `900 ${h.ctaSize}px ${FONT}`;
+  ctx.fillStyle = DARK; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('SCANSIONA E GIOCA', cx, cardY + pad);
+  ctx.textBaseline = 'alphabetic';
+  const qrTop = cardY + pad + h.ctaSize + Math.round(pad * 0.6);
+  drawQrBlock(ctx, qrImage, cx, qrTop, qrSz, pad, 16, '#ffffff');
+
+  // QR label — helper caption under the card
+  const labelY = cardY + cardH + Math.round(H * 0.022);
+  ctx.font = `700 ${h.qrLabelSize}px ${FONT}`;
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('Scopri se il premio è tuo', cx, labelY);
+  ctx.textBaseline = 'alphabetic';
+
+  // Expiry / urgency — smallest
+  const urg = expiresText ? expiresText.toUpperCase() : 'PREMIO DA RITIRARE SUBITO';
+  ctx.font = `800 ${h.expirySize}px ${FONT}`;
+  ctx.fillStyle = GOLD; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(urg, cx, labelY + Math.round(h.qrLabelSize * 1.4));
+  ctx.textBaseline = 'alphabetic';
+}
+
+// ── Concept B — FORTUNA ───────────────────────────────────────────────────────
+// Wheel-of-fortune energy. The QR sits at the centre of the wheel = "spin to win".
+function renderPrintLuckB(ctx, canvas, qrImage, data) {
+  const W = canvas.width, H = canvas.height, cx = W / 2;
+  const { primary, secondary, prizeText, storeName, expiresText, logoImage } = data;
+  const P = primary || '#7c3aed', S = secondary || '#ec4899';
+  const prize = stripEmoji(prizeText) || 'UN PREMIO';
+  const h = computeA4Hierarchy(data, W);
+
+  // Vibrant diagonal gradient + confetti
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, P); bg.addColorStop(1, S);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  drawConfetti(ctx, W, H, ['#ffffff', '#ffe98a', '#9ae6b4']);
+
+  // ── Store name — prominent ──
+  let y = Math.round(H * 0.04);
+  if (logoImage) {
+    const ls = Math.round(W * 0.07);
+    drawLogo(ctx, logoImage, cx - ls / 2, y, ls, '#ffffff', 12);
+    y += ls + 12;
+  }
+  ctx.font = `800 ${h.storeSize}px ${FONT}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText((storeName || '').toUpperCase(), cx, y);
+  y += Math.round(h.storeSize * 1.2);
+  ctx.textBaseline = 'alphabetic';
+
+  // Eyebrow "IN PALIO" + PRIZE — dominant
+  ctx.font = `800 ${Math.round(h.expirySize * 1.05)}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('IN PALIO', cx, y);
+  y += Math.round(h.expirySize * 1.4);
+  ctx.textBaseline = 'alphabetic';
+
+  y = drawTextBlock(ctx, {
+    text: prize, x: cx, y,
+    maxWidth: W * 0.9, maxHeight: H * 0.2,
+    startSize: h.prizeSize, minSize: h.ctaSize + 8,
+    weight: 900, color: '#ffe98a', maxLines: 3, lineRatio: 1.02
+  });
+  y += Math.round(H * 0.012);
+
+  // Fortune wheel with the QR at its centre — large but secondary to the prize
+  const cyW   = Math.round(H * 0.66);
+  const R     = Math.round(W * 0.30);
+  drawWheel(ctx, cx, cyW, R, '#ffe98a', S);
+  const rIn = Math.round(R * 0.66);
+  ctx.beginPath(); ctx.arc(cx, cyW, rIn, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+  const qrSz = Math.round(rIn * 1.32);
+  ctx.drawImage(qrImage, cx - qrSz / 2, cyW - qrSz / 2, qrSz, qrSz);
+
+  // ── CTA under the wheel — second most visible ──
+  const ctaY = cyW + R + Math.round(H * 0.028);
+  ctx.font = `900 ${h.ctaSize}px ${FONT}`;
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('GIRA E VINCI', cx, ctaY);
+  ctx.textBaseline = 'alphabetic';
+
+  // QR label — helper caption
+  const labelY = ctaY + Math.round(h.ctaSize * 1.12);
+  ctx.font = `700 ${h.qrLabelSize}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('Inquadra e scopri se hai vinto', cx, labelY);
+  ctx.textBaseline = 'alphabetic';
+
+  // Expiry / free-try reducer — smallest, very bottom
+  const urg = expiresText ? expiresText : 'Un tentativo gratis · Premi immediati';
+  ctx.font = `600 ${h.expirySize}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(urg, cx, labelY + Math.round(h.qrLabelSize * 1.3));
+  ctx.textBaseline = 'alphabetic';
+}
+
+// ── Concept C — SCARSITÀ / PREMI LIMITATI ─────────────────────────────────────
+// FOMO. Dark stage + red alert. Depletion bar screams "almost gone".
+function renderPrintScarcityC(ctx, canvas, qrImage, data) {
+  const W = canvas.width, H = canvas.height, cx = W / 2;
+  const { prizeText, storeName, expiresText, logoImage } = data;
+  const RED = '#ef2d56', DARK = '#0f1115';
+  const prize = stripEmoji(prizeText) || 'UN PREMIO';
+  const h = computeA4Hierarchy(data, W);
+
+  ctx.fillStyle = DARK; ctx.fillRect(0, 0, W, H);
+
+  // Top alert bar — full width red
+  const barH = Math.round(H * 0.065);
+  ctx.fillStyle = RED; ctx.fillRect(0, 0, W, barH);
+  ctx.font = `900 ${Math.round(W * 0.026)}px ${FONT}`;
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('PREMI LIMITATI · AFFRETTATI', cx, barH / 2);
+  ctx.textBaseline = 'alphabetic';
+
+  // ── Store name — prominent ──
+  let y = barH + Math.round(H * 0.025);
+  if (logoImage) {
+    const ls = Math.round(W * 0.07);
+    drawLogo(ctx, logoImage, cx - ls / 2, y, ls, RED, 12);
+    y += ls + 10;
+  }
+  ctx.font = `800 ${h.storeSize}px ${FONT}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText((storeName || '').toUpperCase(), cx, y);
+  y += Math.round(h.storeSize * 1.2);
+
+  // Scarcity eyebrow
+  ctx.font = `800 ${Math.round(h.expirySize * 1.05)}px ${FONT}`;
+  ctx.fillStyle = RED;
+  ctx.fillText('ULTIMI PREMI DISPONIBILI', cx, y);
+  y += Math.round(h.expirySize * 1.5);
+  ctx.textBaseline = 'alphabetic';
+
+  // ── PRIZE inside a red-bordered "stock" box — dominant ──
+  const boxW = Math.round(W * 0.86);
+  const boxX = cx - boxW / 2;
+  const boxH = Math.round(H * 0.17);
+  roundedRect(ctx, boxX, y, boxW, boxH, 24);
+  ctx.fillStyle = 'rgba(239,45,86,0.10)'; ctx.fill();
+  ctx.strokeStyle = RED; ctx.lineWidth = 4;
+  roundedRect(ctx, boxX, y, boxW, boxH, 24); ctx.stroke();
+  drawTextBlock(ctx, {
+    text: prize, x: cx, y: y + Math.round(boxH * 0.16),
+    maxWidth: boxW * 0.9, maxHeight: boxH * 0.68,
+    startSize: h.prizeSize, minSize: h.ctaSize + 8,
+    weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.02
+  });
+  y += boxH + Math.round(H * 0.022);
+
+  // Depletion bar — "quasi esauriti"
+  const barW = Math.round(W * 0.78);
+  drawDepletionBar(ctx, cx - barW / 2, y, barW, Math.round(H * 0.02), 0.18, RED);
+  y += Math.round(H * 0.02) + 10;
+  ctx.font = `800 ${h.expirySize}px ${FONT}`;
+  ctx.fillStyle = RED; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('QUASI ESAURITI', cx, y);
+  ctx.textBaseline = 'alphabetic';
+
+  // ── QR card with CTA ── (placed right after the depletion bar, no dead space)
+  const qrSz   = Math.round(W * 0.36);
+  const pad    = Math.round(qrSz * 0.08);
+  const cardW  = Math.round(W * 0.64);
+  const cardH  = pad + h.ctaSize + Math.round(pad * 0.6) + qrSz + pad * 2 + pad;
+  const cardX  = cx - cardW / 2;
+  const cardY  = y + Math.round(H * 0.04);
+  roundedRect(ctx, cardX, cardY, cardW, cardH, 24);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+
+  // CTA — second most visible
+  ctx.font = `900 ${h.ctaSize}px ${FONT}`;
+  ctx.fillStyle = RED; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('PRENDI IL TUO', cx, cardY + pad);
+  ctx.textBaseline = 'alphabetic';
+  const qrTop = cardY + pad + h.ctaSize + Math.round(pad * 0.6);
+  drawQrBlock(ctx, qrImage, cx, qrTop, qrSz, pad, 16, '#ffffff');
+
+  // QR label helper
+  const labelY = cardY + cardH + Math.round(H * 0.02);
+  ctx.font = `700 ${h.qrLabelSize}px ${FONT}`;
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('Scansiona e prendi il tuo premio', cx, labelY);
+  ctx.textBaseline = 'alphabetic';
+
+  // Expiry — smallest
+  const urg = expiresText ? expiresText.toUpperCase() : 'PRIMA CHE FINISCANO';
+  ctx.font = `800 ${h.expirySize}px ${FONT}`;
+  ctx.fillStyle = RED; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(urg, cx, labelY + Math.round(h.qrLabelSize * 1.35));
+  ctx.textBaseline = 'alphabetic';
+}
+
+// ── Concept D — FESTA / SAGRA ─────────────────────────────────────────────────
+// White poster, Italian "sagra" energy: brushstroke prize bands (red/yellow/navy),
+// store name banner, chevron CTA, central QR flanked by trophy + gift icons,
+// dark bottom bar with stopwatch + expiry. Built to look like a prize game.
+
+const FESTA = { red: '#e1251b', yellow: '#f5c518', navy: '#16203a', white: '#ffffff' };
+
+// Split prize into punchy UPPERCASE lines for the festa bands.
+// Strips Italian filler words, prefers ONE word per band (max 4 bands);
+// if more remain, the surplus is merged into the last band (auto-shrunk to fit).
+function festaPrizeLines(prize) {
+  const FILLER = new Set(['per','di','del','della','dello','dei','degli','delle','e','ed',
+    'il','la','lo','i','gli','le','un','una','uno','con','da','a','al','in','su','o']);
+  const words = stripEmoji(prize).toUpperCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return ['PREMIO'];
+  const meaningful = words.filter(w => !FILLER.has(w.toLowerCase()));
+  const use = meaningful.length ? meaningful : words;
+  if (use.length <= 4) return use;
+  return [...use.slice(0, 3), use.slice(3).join(' ')];
+}
+
+// Draw one centered band line, shrinking on WIDTH so words are never dropped.
+function drawFestaLine(ctx, text, cx, midY, maxWidth, maxSize, color) {
+  let size = maxSize;
+  do {
+    ctx.font = `900 ${size}px ${FONT}`;
+    if (ctx.measureText(text).width <= maxWidth) break;
+    size -= 4;
+  } while (size > 34);
+  ctx.font = `900 ${size}px ${FONT}`;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, midY);
+  ctx.textBaseline = 'alphabetic';
+}
+
+// Brushstroke band: rounded rectangle with slightly rough top/bottom edges
+function drawBrushBand(ctx, x, y, w, h, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  const segs = 7, amp = h * 0.05, r = h * 0.14;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y + amp);
+  for (let i = 1; i <= segs; i++) ctx.lineTo(x + (w / segs) * i, y + (i % 2 ? 0 : amp));
+  ctx.lineTo(x + w, y + h - amp);
+  for (let i = segs - 1; i >= 0; i--) ctx.lineTo(x + (w / segs) * i, y + h - (i % 2 ? amp : 0));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// Radiating spark burst (sagra "pop")
+function drawBurst(ctx, x, y, len, color) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineCap = 'round';
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI * 0.55 + (i / 4) * Math.PI * 1.1;
+    ctx.lineWidth = len * 0.16;
+    ctx.beginPath();
+    ctx.moveTo(x + Math.cos(a) * len * 0.45, y + Math.sin(a) * len * 0.45);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawIconCircle(ctx, cx, cy, r, bg) {
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = bg; ctx.fill();
+}
+
+function drawTrophyIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = s * 0.09;
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.30, cy - s * 0.38);
+  ctx.lineTo(cx + s * 0.30, cy - s * 0.38);
+  ctx.lineTo(cx + s * 0.22, cy + s * 0.02);
+  ctx.quadraticCurveTo(cx, cy + s * 0.22, cx - s * 0.22, cy + s * 0.02);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - s * 0.34, cy - s * 0.20, s * 0.14, Math.PI * 0.45, Math.PI * 1.55); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx + s * 0.34, cy - s * 0.20, s * 0.14, -Math.PI * 0.55, Math.PI * 0.55); ctx.stroke();
+  ctx.fillRect(cx - s * 0.06, cy + s * 0.16, s * 0.12, s * 0.18);
+  ctx.fillRect(cx - s * 0.22, cy + s * 0.34, s * 0.44, s * 0.09);
+  // star on cup
+  ctx.fillStyle = FESTA.red;
+  drawStar(ctx, cx, cy - s * 0.16, s * 0.13, s * 0.06, 5);
+  ctx.restore();
+}
+
+function drawStar(ctx, cx, cy, outer, inner, points) {
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+    ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+function drawGiftIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(cx - s * 0.32, cy - s * 0.12, s * 0.64, s * 0.46);   // box
+  ctx.fillRect(cx - s * 0.36, cy - s * 0.22, s * 0.72, s * 0.14);   // lid
+  ctx.fillStyle = FESTA.navy;
+  ctx.fillRect(cx - s * 0.05, cy - s * 0.22, s * 0.10, s * 0.56);   // vertical ribbon
+  // bow
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.16, cy - s * 0.30, s * 0.14, s * 0.10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.16, cy - s * 0.30, s * 0.14, s * 0.10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawStopwatchIcon(ctx, cx, cy, s, color) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = s * 0.09;
+  ctx.fillRect(cx - s * 0.10, cy - s * 0.52, s * 0.20, s * 0.12);   // top button
+  ctx.beginPath(); ctx.arc(cx, cy + s * 0.02, s * 0.40, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + s * 0.02); ctx.lineTo(cx, cy - s * 0.22);
+  ctx.moveTo(cx, cy + s * 0.02); ctx.lineTo(cx + s * 0.18, cy + s * 0.06);
+  ctx.lineCap = 'round'; ctx.stroke();
+  ctx.restore();
+}
+
+function renderPrintFestaD(ctx, canvas, qrImage, data) {
+  const W = canvas.width, H = canvas.height, cx = W / 2;
+  const { prizeText, storeName, expiresText, logoImage } = data;
+  const prize = stripEmoji(prizeText) || 'UN PREMIO';
+  const side = Math.round(W * 0.05);
+
+  // White background
+  ctx.fillStyle = FESTA.white; ctx.fillRect(0, 0, W, H);
+
+  // ── Store name banner ──
+  let y = Math.round(H * 0.03);
+  if (logoImage) {
+    const ls = Math.round(W * 0.085);
+    drawLogo(ctx, logoImage, cx - ls / 2, y, ls, FESTA.red, 14);
+    y += ls + 10;
+  }
+  const storeText = (storeName || '').toUpperCase();
+  let stSize = Math.round(W * 0.088);
+  do {
+    ctx.font = `900 ${stSize}px ${FONT}`;
+    if (ctx.measureText(storeText).width <= W * 0.9) break;
+    stSize -= 4;
+  } while (stSize > 36);
+  ctx.font = `900 ${stSize}px ${FONT}`;
+  ctx.fillStyle = FESTA.navy; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(storeText, cx, y);
+  ctx.textBaseline = 'alphabetic';
+  y = y + stSize + Math.round(H * 0.006);
+
+  // Flourish: red line · star · red line
+  const fy = y + Math.round(H * 0.012);
+  ctx.strokeStyle = FESTA.red; ctx.lineWidth = Math.round(H * 0.005); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - W * 0.18, fy); ctx.lineTo(cx - W * 0.05, fy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + W * 0.05, fy); ctx.lineTo(cx + W * 0.18, fy); ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.fillStyle = FESTA.yellow; drawStar(ctx, cx, fy, W * 0.022, W * 0.01, 5);
+  y = fy + Math.round(H * 0.02);
+
+  // ── Prize bands — the dominant element ──
+  const lines = festaPrizeLines(prize);
+  const bandsTop = y;
+  const bandsBot = Math.round(H * 0.575);
+  const gap = Math.round(H * 0.006);
+  const bandH = Math.floor((bandsBot - bandsTop - gap * (lines.length - 1)) / lines.length);
+  const bandW = Math.round(W * 0.9);
+
+  lines.forEach((line, i) => {
+    const by = bandsTop + i * (bandH + gap);
+    const style = i === 0 ? 'redText' : (i % 2 === 1 ? 'yellowBand' : 'redBand');
+
+    if (style === 'yellowBand') drawBrushBand(ctx, cx - bandW / 2, by, bandW, bandH, FESTA.yellow);
+    if (style === 'redBand')    drawBrushBand(ctx, cx - bandW / 2, by, bandW, bandH, FESTA.red);
+    if (style === 'redText') {
+      drawBurst(ctx, cx - bandW * 0.42, by + bandH * 0.5, bandH * 0.42, FESTA.yellow);
+      drawBurst(ctx, cx + bandW * 0.42, by + bandH * 0.5, bandH * 0.42, FESTA.yellow);
+    }
+    const color = style === 'redText' ? FESTA.red : style === 'yellowBand' ? FESTA.navy : FESTA.white;
+    drawFestaLine(ctx, line, cx, by + bandH / 2, bandW * 0.82, Math.round(bandH * 0.74), color);
+  });
+
+  // ── CTA with chevrons ──
+  const ctaY = bandsBot + Math.round(H * 0.022);
+  const ctaSize = Math.round(W * 0.046);
+  ctx.font = `900 ${ctaSize}px ${FONT}`;
+  const ctaText = 'SCANSIONA E GIOCA ORA!';
+  const ctaW = ctx.measureText(ctaText).width;
+  ctx.fillStyle = FESTA.navy; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(ctaText, cx, ctaY);
+  ctx.fillStyle = FESTA.red;
+  ctx.textAlign = 'left';  ctx.fillText('»', cx - ctaW / 2 - W * 0.05, ctaY);
+  ctx.textAlign = 'right'; ctx.fillText('«', cx + ctaW / 2 + W * 0.05, ctaY);
+  ctx.textBaseline = 'alphabetic';
+
+  // ── Central QR flanked by trophy (left) and gift (right) ──
+  const qrSz  = Math.round(W * 0.34);
+  const qrTop = ctaY + Math.round(H * 0.03);
+  const qrPad = Math.round(qrSz * 0.07);
+  roundedRect(ctx, cx - qrSz / 2 - qrPad, qrTop - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 18);
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.strokeStyle = FESTA.navy; ctx.lineWidth = 4;
+  roundedRect(ctx, cx - qrSz / 2 - qrPad, qrTop - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 18); ctx.stroke();
+  ctx.drawImage(qrImage, cx - qrSz / 2, qrTop, qrSz, qrSz);
+  const qrMidY = qrTop + qrSz / 2;
+
+  const iconR = Math.round(W * 0.075);
+  const lX = Math.round(W * 0.145), rX = Math.round(W * 0.855);
+  const labelSize = Math.round(W * 0.026);
+
+  drawIconCircle(ctx, lX, qrMidY, iconR, FESTA.red);
+  drawTrophyIcon(ctx, lX, qrMidY, iconR * 1.15);
+  drawIconCircle(ctx, rX, qrMidY, iconR, FESTA.yellow);
+  drawGiftIcon(ctx, rX, qrMidY, iconR * 1.15);
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.font = `800 ${labelSize}px ${FONT}`;
+  ctx.fillStyle = FESTA.navy; ctx.fillText('SCOPRI SUBITO', lX, qrMidY + iconR + 14);
+  ctx.fillStyle = FESTA.red;  ctx.fillText('SE HAI VINTO', lX, qrMidY + iconR + 14 + labelSize * 1.2);
+  ctx.fillStyle = FESTA.navy; ctx.fillText('PREMI', rX, qrMidY + iconR + 14);
+  ctx.fillStyle = FESTA.red;  ctx.fillText('IMMEDIATI', rX, qrMidY + iconR + 14 + labelSize * 1.2);
+  ctx.textBaseline = 'alphabetic';
+
+  // ── Bottom dark bar: stopwatch + free participation + expiry ──
+  const barH = Math.round(H * 0.095);
+  const barY = H - barH - Math.round(H * 0.03);
+  roundedRect(ctx, side, barY, W - side * 2, barH, 22);
+  ctx.fillStyle = FESTA.navy; ctx.fill();
+  const barMid = barY + barH / 2;
+
+  drawStopwatchIcon(ctx, side + barH * 0.55, barMid, barH * 0.5, FESTA.yellow);
+
+  const colSize = Math.round(W * 0.028);
+  const divX = expiresText ? Math.round(W * 0.56) : null;
+  const leftCx = expiresText ? Math.round(W * 0.37) : cx + barH * 0.3;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `800 ${colSize}px ${FONT}`;
+  ctx.fillStyle = '#fff';        ctx.fillText('PARTECIPAZIONE', leftCx, barMid - colSize * 0.6);
+  ctx.fillStyle = FESTA.yellow;  ctx.fillText('GRATUITA',      leftCx, barMid + colSize * 0.6);
+
+  if (expiresText) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(divX, barY + barH * 0.22); ctx.lineTo(divX, barY + barH * 0.78); ctx.stroke();
+    const dateOnly = expiresText.replace(/valido fino al\s*/i, '').trim();
+    const rightCx = Math.round(W * 0.74);
+    ctx.fillStyle = '#fff';       ctx.font = `700 ${Math.round(colSize * 0.82)}px ${FONT}`;
+    ctx.fillText('VALIDO FINO AL', rightCx, barMid - colSize * 0.6);
+    ctx.fillStyle = FESTA.yellow; ctx.font = `900 ${colSize}px ${FONT}`;
+    ctx.fillText(dateOnly, rightCx, barMid + colSize * 0.6);
+  }
+  ctx.textBaseline = 'alphabetic';
+}
+
+// Dispatch A4 print to the selected game concept (default: A)
+function renderPrintConcept(ctx, canvas, qrImage, data) {
+  const concept = state.printConcept || 'D';
+  // Compute + verify the numeric visual hierarchy before drawing (localhost only)
+  if (typeof location !== 'undefined' && location.hostname === 'localhost' && concept !== 'D') {
+    logA4Hierarchy(computeA4Hierarchy(data, canvas.width), concept);
+  }
+  switch (concept) {
+    case 'A': return renderPrintWinA(ctx, canvas, qrImage, data);
+    case 'B': return renderPrintLuckB(ctx, canvas, qrImage, data);
+    case 'C': return renderPrintScarcityC(ctx, canvas, qrImage, data);
+    case 'D':
+    default:  return renderPrintFestaD(ctx, canvas, qrImage, data);
+  }
 }
 
 // ─── FACEBOOK FEED renderer (1200×630) ────────────────────────────────────────
@@ -1563,7 +2353,7 @@ async function renderCanvas(formatKey = formatPreviewSelect.value) {
   };
 
   switch (format.family) {
-    case 'print':    renderPrint(ctx, canvas, qrImage, data);                       break;
+    case 'print':    renderPrintConcept(ctx, canvas, qrImage, data);                break;
     case 'facebook': renderFacebook(ctx, canvas, qrImage, data);                    break;
     case 'social':   renderSocial(ctx, canvas, qrImage, data);                      break;
     case 'story':    renderStoryFrame(ctx, canvas, qrImage, data, state.storyFrame); break;
@@ -1574,11 +2364,13 @@ async function renderCanvas(formatKey = formatPreviewSelect.value) {
   updateStoryNav(formatKey);
   playUrlLabel.textContent = playUrl;
 
-  // M2: post-render layout validation — localhost only, non-blocking
+  // M2 + Marketing: post-render validation — localhost only, non-blocking
   if (location.hostname === 'localhost') {
     try {
       const boxes = computeElementBoxes(formatKey, data, canvas.width, canvas.height);
       if (boxes) validateLayout(boxes, data, canvas.width, canvas.height, formatKey);
+      validateMarketing(data, boxes, formatKey);
+      marketingScore(data, boxes, formatKey);
     } catch (e) {
       console.warn('[validateLayout] errore interno:', e.message);
     }
@@ -1680,37 +2472,36 @@ function estimateTextFit(text, fontSizePx, maxWidthPx, maxLines = 2) {
 
 /**
  * Analytical bounding boxes for A4 (renderPrint).
- * Mirrors renderPrint geometry exactly — no drawing occurs.
+ * M3A: delegates zone calculation to computePrintLayout — always in sync.
+ * Includes qrTitle and qrCard boxes so validateLayout can check their overlap.
  */
 function computeBoxes_a4(data, W, H) {
-  const z = {
-    headerEnd: Math.round(H * 0.115),
-    heroEnd:   Math.round(H * 0.43),
-    prizeEnd:  Math.round(H * 0.61),
-    qrEnd:     Math.round(H * 0.915),
-  };
-  const cx       = W / 2;
-  const qrSecH   = z.qrEnd - z.prizeEnd;
-  const qrSz     = Math.round(Math.min(W * 0.36, qrSecH * 0.52));
-  const qrPad    = Math.round(qrSz * 0.065);
-  const ctaBtnH  = Math.round(W * 0.052);
-  const qrLabelH = Math.round(W * 0.026);
-  const totalQrH = qrLabelH + 16 + qrSz + qrPad * 2 + 16 + ctaBtnH;
-  const qrStartY = z.prizeEnd + (qrSecH - totalQrH) / 2;
-  // drawQrBlock(ctx, img, cx, qrStartY + qrLabelH + 16, ...) → image top = y param
-  const qrActualY = qrStartY + qrLabelH + 16;
+  const layout    = computePrintLayout(data, W, H);
+  const z         = { headerEnd: layout.headerEnd, heroEnd: layout.heroEnd, prizeEnd: layout.prizeEnd, qrEnd: layout.qrEnd };
+  const cx        = W / 2;
+  const qrSz      = layout.qrSz;
+  const qrSecH    = z.qrEnd - z.prizeEnd;
+  const qrPad     = Math.round(qrSz * 0.065);
+  const ctaBtnH   = Math.round(W * 0.052);
+  const qrLabelH  = Math.round(W * 0.026);
+  const qrGap     = Math.max(16, qrPad + 4);           // mirrors renderPrint fix
+  const totalQrH  = qrLabelH + qrGap + qrSz + qrPad * 2 + 16 + ctaBtnH;
+  const qrStartY  = z.prizeEnd + (qrSecH - totalQrH) / 2;
+  const qrActualY = qrStartY + qrLabelH + qrGap;       // QR image top
   const ctaY      = qrActualY + qrSz + qrPad * 2 + 18;
   const ctaBtnW   = W * 0.58;
   return {
-    header:    { x: 0,               y: 0,           w: W,        h: z.headerEnd,            label: 'Header band'   },
-    hero:      { x: 0,               y: z.headerEnd, w: W,        h: z.heroEnd - z.headerEnd, label: 'Hero/Headline' },
-    prizeZone: { x: 0,               y: z.heroEnd,   w: W,        h: z.prizeEnd - z.heroEnd,  label: 'Prize band'    },
-    qrZone:    { x: 0,               y: z.prizeEnd,  w: W,        h: z.qrEnd - z.prizeEnd,    label: 'QR section'    },
-    footer:    { x: 0,               y: z.qrEnd,     w: W,        h: H - z.qrEnd,             label: 'Footer'        },
-    qr:        { x: cx - qrSz / 2,   y: qrActualY,   w: qrSz,    h: qrSz,                    label: 'QR code'       },
-    cta:       { x: cx - ctaBtnW / 2, y: ctaY,        w: ctaBtnW, h: ctaBtnH,                 label: 'CTA button'    },
-    headlineFontEst: Math.round(W * 0.088),   // startSize from drawTextBlock call
-    prizeFontEst:    Math.round(W * 0.072),   // startSize for prizeText in hero
+    header:    { x: 0,                    y: 0,              w: W,              h: z.headerEnd,             label: 'Header band'       },
+    hero:      { x: 0,                    y: z.headerEnd,    w: W,              h: z.heroEnd - z.headerEnd,  label: 'Hero/Headline'     },
+    prizeZone: { x: 0,                    y: z.heroEnd,      w: W,              h: z.prizeEnd - z.heroEnd,   label: 'Prize band'        },
+    qrZone:    { x: 0,                    y: z.prizeEnd,     w: W,              h: z.qrEnd - z.prizeEnd,     label: 'QR section'        },
+    footer:    { x: 0,                    y: z.qrEnd,        w: W,              h: H - z.qrEnd,              label: 'Footer'            },
+    qrTitle:   { x: cx - W * 0.42,        y: qrStartY,       w: W * 0.84,       h: qrLabelH,                 label: 'QR title label'    },
+    qrCard:    { x: cx - qrSz/2 - qrPad,  y: qrActualY - qrPad, w: qrSz + qrPad*2, h: qrSz + qrPad*2,       label: 'QR card (white)'   },
+    qr:        { x: cx - qrSz / 2,        y: qrActualY,      w: qrSz,           h: qrSz,                     label: 'QR code'           },
+    cta:       { x: cx - ctaBtnW / 2,     y: ctaY,           w: ctaBtnW,        h: ctaBtnH,                  label: 'CTA button'        },
+    headlineFontEst: Math.round(W * 0.092),
+    prizeFontEst:    Math.round(W * 0.072),
     qrSizePx: qrSz,
   };
 }
@@ -1814,11 +2605,29 @@ function validateLayout(boxes, data, W, H, formatKey) {
     }
   });
 
-  // 3. Possibile sovrapposizione QR ↔ CTA
+  // 3a. Possibile sovrapposizione QR ↔ CTA
   if (boxes.qr && boxes.cta) {
     const q = boxes.qr, c = boxes.cta;
     if (q.x < c.x + c.w && q.x + q.w > c.x && q.y < c.y + c.h && q.y + q.h > c.y) {
       issues.push(`Sovrapposizione: QR e CTA si sovrappongono`);
+    }
+  }
+
+  // 3b. qrTitle ↔ qrCard: il testo non deve sconfinare nel rettangolo bianco
+  if (boxes.qrTitle && boxes.qrCard) {
+    const titleBottom = boxes.qrTitle.y + boxes.qrTitle.h;
+    const cardTop     = boxes.qrCard.y;
+    if (titleBottom + 4 > cardTop) {
+      issues.push(`qrTitle sovrappone qrCard: title bottom=${Math.round(titleBottom)} vs card top=${Math.round(cardTop)} (overlap ${Math.round(titleBottom + 4 - cardTop)}px)`);
+    }
+  }
+
+  // 3c. qrCard ↔ ctaButton: margine minimo 24px tra box QR e pulsante CTA
+  if (boxes.qrCard && boxes.cta) {
+    const cardBottom = boxes.qrCard.y + boxes.qrCard.h;
+    const ctaTop     = boxes.cta.y;
+    if (cardBottom + 24 > ctaTop) {
+      issues.push(`qrCard troppo vicino a CTA: gap ${Math.round(ctaTop - cardBottom)}px < 24px (card bottom=${Math.round(cardBottom)} cta top=${Math.round(ctaTop)})`);
     }
   }
 
@@ -1883,6 +2692,259 @@ function validateLayout(boxes, data, W, H, formatKey) {
   return { issues, warnings, layoutCoverage, contentDensity };
 }
 
+// ─── Marketing Validator ──────────────────────────────────────────────────────
+//
+// Evaluates a rendered asset through a marketer's lens, not just a renderer's.
+// Goal: does the viewer understand in < 2 seconds what they can win, what to do,
+// and where to scan?  Runs only on localhost, never blocks export.
+//
+// Rules (R1–R8):
+//   R1  Premio principale presente                      PASS/FAIL
+//   R2  Premio principale visivamente dominante         PASS/FAIL
+//   R3  QR tra i primi 3 elementi visivi                PASS/FAIL
+//   R4  CTA presente                                    PASS/FAIL
+//   R5  Premi secondari non dominanti                   PASS/FAIL
+//   R6  Logo meno evidente del premio                   PASS/FAIL
+//   R7  Urgenza presente                                PASS/WARN
+//   R8  Gerarchia visiva chiara (meta-check)            PASS/FAIL
+
+function validateMarketing(data, boxes, formatKey) {
+  const pass   = [];
+  const fail   = [];
+  const warn   = [];
+  const family = FORMAT_SIZES[formatKey]?.family ?? 'print';
+
+  // ── Derived helpers ──────────────────────────────────────────────────────────
+
+  // Effective headline as actually rendered in print (reconstructed from prize)
+  const strippedPrize = (data.prizeText ?? '').replace(/\p{Emoji_Presentation}\s*/gu, '').trim();
+  const prizeWords    = strippedPrize.split(/\s+/).filter(Boolean);
+  const effectiveHL   = data.prizeText
+    ? ('VINCI ' + prizeWords.slice(0, 4).join(' ')).toUpperCase()
+    : (data.headline ?? '');
+
+  // Game-style signals: question, curiosity, "you might have won" framing
+  const GAME_SIGNALS = ['?', 'hai vinto', 'scopri se', 'potresti', 'fortuna', 'tenta la', 'premi immediat', 'premio istantaneo'];
+  const PROMO_HLS    = ['inquadra e vinci', 'gioca ora', 'partecipa', 'scopri il tuo premio',
+                        'gioca subito', 'vinci subito', 'promo', 'offerta'];
+  const hlLower     = effectiveHL.toLowerCase();
+  const hlUpper     = effectiveHL.toUpperCase();
+  const isGameHL    = GAME_SIGNALS.some(g => hlLower.includes(g));
+  const isGenericHL = PROMO_HLS.some(g => hlLower === g || hlLower.startsWith(g));
+
+  const prizeZoneH  = boxes?.prizeZone?.h ?? boxes?.content?.h ?? 0;
+  const heroH       = boxes?.hero?.h ?? 0;
+  const headerH     = boxes?.header?.h ?? 0;
+  const prizeFontEst = boxes?.prizeFontEst ?? 0;
+  const qrSz        = boxes?.qrSizePx ?? 0;
+  const W           = boxes?.header?.w ?? 0;
+
+  // ── R1: Premio principale presente ───────────────────────────────────────────
+  const prizeText = (data.prizeText ?? '').trim();
+  if (prizeText.length > 0) {
+    pass.push(`R1 Premio principale presente: "${prizeText}"`);
+  } else {
+    fail.push('R1 Premio principale assente — nessun testo premio disponibile per il layout');
+  }
+
+  // ── R2: Headline game-psychology (crea curiosità, non promozione) ────────────
+  if (isGameHL && prizeText.length > 0) {
+    pass.push(`R2 Headline game-psychology ✅: "${effectiveHL}"`);
+  } else if (prizeText.length > 0 && hlUpper.startsWith('VINCI ')) {
+    warn.push(`R2 Headline promozionale (non game): "${effectiveHL}" — preferire formato domanda "HAI VINTO X?"`);
+  } else if (isGenericHL) {
+    fail.push(`R2 Headline generica ❌: "${effectiveHL}" — sostituire con game-psychology es: "🍺 HAI VINTO BIRRA?"`);
+  } else if (prizeText.length === 0) {
+    fail.push('R2 Nessun premio → nessuna headline efficace');
+  } else {
+    warn.push(`R2 Headline presente ma non game-style: "${effectiveHL}"`);
+  }
+
+  if (boxes) {
+    // Prize zone deve essere visualmente più alta del semplice header brand
+    if (prizeZoneH > 0 && headerH > 0 && prizeZoneH >= headerH * 1.3) {
+      pass.push(`R2b Zona premio dominante sull'header: prizeZone ${Math.round(prizeZoneH)}px vs header ${Math.round(headerH)}px`);
+    } else if (prizeZoneH > 0 && prizeFontEst >= 60) {
+      pass.push(`R2b Font premio adeguato: ${prizeFontEst}px`);
+    } else if (prizeFontEst > 0 && prizeFontEst < 60) {
+      fail.push(`R2b Font premio troppo piccolo: ${prizeFontEst}px — deve essere almeno 60px`);
+    }
+  } else {
+    warn.push('R2b Dominanza premio: boxes non disponibili per questo formato, verifica visivamente');
+  }
+
+  // ── R3: QR tra i primi 3 elementi visivi ─────────────────────────────────────
+  // Min QR: 30% larghezza per print/social, 25% per LED (leggibilità da lontano diversa)
+  const minQrRatio  = family === 'led' ? 0.22 : 0.30;
+  const minQrAbsPx  = W > 0 ? Math.round(W * minQrRatio) : (family === 'led' ? 200 : 300);
+  if (qrSz >= minQrAbsPx) {
+    pass.push(`R3 QR visibile e leggibile: ${qrSz}px ≥ min ${minQrAbsPx}px (${(qrSz / (W || 1) * 100).toFixed(0)}% larghezza)`);
+  } else if (qrSz > 0) {
+    fail.push(`R3 QR troppo piccolo: ${qrSz}px < min ${minQrAbsPx}px — aumentare QR zone`);
+  } else {
+    warn.push('R3 QR: dimensione non verificabile per questo formato');
+  }
+
+  // ── R4: CTA presente ─────────────────────────────────────────────────────────
+  const ctaText = (data.cta ?? '').trim();
+  if (ctaText.length > 0) {
+    pass.push(`R4 CTA presente: "${ctaText}"`);
+  } else {
+    fail.push('R4 CTA assente — aggiungere testo come "Gioca ora", "Scansiona", "Partecipa subito"');
+  }
+
+  // ── R5: Premi secondari non dominanti ────────────────────────────────────────
+  // Architetturally guaranteed by getMainPrize() — secondary prizes never enter the main layout.
+  pass.push('R5 Premi secondari esclusi dal blocco principale (garantito da getMainPrize)');
+
+  // ── R6: Logo meno evidente del premio ────────────────────────────────────────
+  if (!data.logoImage) {
+    pass.push('R6 Logo assente: solo nome attività — nessun visual competitor al premio');
+  } else if (prizeZoneH > 0 && headerH > 0 && headerH < prizeZoneH) {
+    pass.push(`R6 Logo in header (${Math.round(headerH)}px) meno prominente della zona premio (${Math.round(prizeZoneH)}px)`);
+  } else {
+    warn.push('R6 Logo presente: verificare visivamente che non superi il peso visivo del premio');
+  }
+
+  // ── R7: Urgenza ──────────────────────────────────────────────────────────────
+  const URGENCY_SIGNALS = ['scad', 'limit', 'esaurim', 'ultim', 'oggi', 'solo per', 'fino a', 'entro il', 'premi rimasti'];
+  const urgencyCorpus   = ((data.expiresText ?? '') + ' ' + (data.subtitle ?? '')).toLowerCase();
+  const urgencyFound    = URGENCY_SIGNALS.find(k => urgencyCorpus.includes(k));
+  if (urgencyFound) {
+    pass.push(`R7 Urgenza presente (segnale: "${urgencyFound}")`);
+  } else if ((data.expiresText ?? '').trim().length > 0) {
+    warn.push(`R7 Scadenza presente ma segnale urgenza debole: "${data.expiresText}" — valutare "ultimi posti", "solo oggi" per +conversione`);
+  } else {
+    warn.push('R7 Nessuna urgenza — aggiungere scadenza o "premi limitati" per aumentare scansioni QR');
+  }
+
+  // ── R8: Gerarchia visiva chiara (meta-check) ─────────────────────────────────
+  if (fail.length === 0) {
+    pass.push(`R8 Gerarchia visiva: PASS — layout orientato alla conversione (${warn.length} warning)`);
+  } else {
+    fail.push(`R8 Gerarchia visiva compromessa da ${fail.length - 1} regola/e fallita/e (vedi sopra)`);
+  }
+
+  // ── Report ────────────────────────────────────────────────────────────────────
+  const score = `${pass.length}/${pass.length + fail.length}`;
+  const label = FORMAT_SIZES[formatKey]?.label ?? formatKey;
+  const tag   = `[Marketing Validator] ${label}`;
+
+  if (fail.length === 0) {
+    console.group(`${tag} ✅  ${score} regole ok — layout orientato alla conversione`);
+  } else {
+    console.group(`${tag} ❌  ${score} — ${fail.length} regola/e di marketing fallita/e`);
+  }
+  pass.forEach(p => console.log('  ✅', p));
+  warn.forEach(w => console.warn('  ⚠️ ', w));
+  fail.forEach(f => console.error('  ❌', f));
+  if (fail.length > 0) {
+    console.error(`  → Correggere i punti sopra per massimizzare scansioni QR e partecipazioni`);
+  }
+  console.groupEnd();
+
+  return { pass, fail, warn, score };
+}
+
+// ─── Marketing Score ──────────────────────────────────────────────────────────
+//
+// 0-100 — quantifies how "game" vs "promotional" an asset is.
+// Dimensions: curiosità, premio dominante, urgenza, gamification, CTA, QR, pulizia.
+// Below 80 → warn. Below 60 → error (asset da rigenerare).
+
+function marketingScore(data, boxes, formatKey) {
+  let score = 0;
+  const details = [];
+
+  // Shared derived values
+  const prizeText    = (data.prizeText ?? '').trim();
+  const effectiveHL  = prizeText ? buildGameHeadline(prizeText) : (data.headline ?? '');
+  const hlUpper      = effectiveHL.toUpperCase();
+  const ctaLower     = ((data.cta ?? '') + ' ' + (data.subtitle ?? '')).toLowerCase();
+  const urgCorpus    = ((data.expiresText ?? '') + ' ' + (data.subtitle ?? '')).toLowerCase();
+  const prizeFontEst = boxes?.prizeFontEst ?? 0;
+  const prizeZoneH   = boxes?.prizeZone?.h ?? 0;
+  const qrSz         = boxes?.qrSizePx ?? 0;
+  const W            = boxes?.header?.w ?? 0;
+
+  // ── 1. Curiosità (20 pt) ─────────────────────────────────────────────────────
+  // Game headlines use "?", "HAI VINTO", "SCOPRI SE", "POTRESTI", "FORTUNA"
+  const GAME_HL = ['?', 'HAI VINTO', 'SCOPRI SE', 'POTRESTI', 'FORTUNA', 'TENTA LA', 'PREMI IMMEDIAT'];
+  const isGameHL = GAME_HL.some(s => hlUpper.includes(s));
+  const curiScore = isGameHL ? 20 : hlUpper.length > 0 ? 8 : 0;
+  score += curiScore;
+  details.push(`Curiosità           ${String(curiScore).padStart(3)}/20  ${isGameHL ? '✅ headline game-psychology' : '⚠️  headline non game-style'}`);
+
+  // ── 2. Premio dominante (20 pt) ──────────────────────────────────────────────
+  const prizeScore = !prizeText ? 0
+    : prizeFontEst >= 80 ? 20
+    : prizeFontEst >= 60 ? 16
+    : prizeFontEst >= 40 ? 10
+    : prizeZoneH > 100   ? 8 : 5;
+  score += prizeScore;
+  details.push(`Premio dominante    ${String(prizeScore).padStart(3)}/20  ${prizeText ? `(font ~${prizeFontEst}px, zona ~${Math.round(prizeZoneH)}px)` : '❌ nessun premio'}`);
+
+  // ── 3. Urgenza (15 pt) ───────────────────────────────────────────────────────
+  const URGENCY_STRONG  = ['ultim', 'limit', 'esaurim', 'oggi', 'solo per', 'premi rimasti', 'scad'];
+  const URGENCY_PARTIAL = ['fino a', 'entro', 'immediat', 'istantane', 'temporane'];
+  const urgStrong  = URGENCY_STRONG.find(k => urgCorpus.includes(k));
+  const urgPartial = URGENCY_PARTIAL.find(k => urgCorpus.includes(k));
+  const urgScore   = urgStrong ? 15 : urgPartial ? 9 : (data.expiresText ?? '').trim() ? 5 : 0;
+  score += urgScore;
+  details.push(`Urgenza             ${String(urgScore).padStart(3)}/15  ${urgStrong ? `✅ "${urgStrong}"` : urgPartial ? `partial "${urgPartial}"` : data.expiresText ? '⚠️  solo scadenza' : '❌ assente'}`);
+
+  // ── 4. Gamification (20 pt) ──────────────────────────────────────────────────
+  // Checks game language across all copy fields + what renderPrint now injects
+  const GAME_LANG = ['istantaneo', 'immediat', 'gratis', 'tentativo', 'gioca', 'scopri se', 'hai vinto', 'fortuna', 'premi immediati', 'tenta'];
+  // renderPrint always injects "SCOPRI SE HAI VINTO" as QR label → count it
+  const gameCorpus = ctaLower + ' scopri se hai vinto tentativo gratuito premi immediati';
+  const gameFound  = GAME_LANG.filter(k => gameCorpus.includes(k));
+  const gameScore  = gameFound.length >= 3 ? 20 : gameFound.length === 2 ? 15 : gameFound.length === 1 ? 10 : 0;
+  score += gameScore;
+  details.push(`Gamification        ${String(gameScore).padStart(3)}/20  ${gameFound.length ? `✅ (${gameFound.slice(0,3).join(', ')})` : '❌ assente'}`);
+
+  // ── 5. CTA (10 pt) ───────────────────────────────────────────────────────────
+  const ctaScore = (data.cta ?? '').trim().length > 0 ? 10 : 0;
+  score += ctaScore;
+  details.push(`CTA                 ${String(ctaScore).padStart(3)}/10  ${data.cta ? `"${data.cta}"` : '❌ assente'}`);
+
+  // ── 6. QR prominence (10 pt) ─────────────────────────────────────────────────
+  const qrScore = W > 0 && qrSz >= W * 0.30 ? 10 : qrSz > 0 ? 5 : (boxes ? 0 : 5);
+  score += qrScore;
+  details.push(`QR prominence       ${String(qrScore).padStart(3)}/10  ${qrSz ? `${qrSz}px (${W ? Math.round(qrSz/W*100) : '?'}% larghezza)` : 'non calcolabile'}`);
+
+  // ── 7. Pulizia visiva (5 pt) ─────────────────────────────────────────────────
+  const elems = [prizeText, data.headline, data.cta, data.storeName, data.expiresText, data.subtitle]
+    .filter(v => v?.trim()).length;
+  const cleanScore = elems <= 4 ? 5 : elems <= 6 ? 3 : 1;
+  score += cleanScore;
+  details.push(`Pulizia visiva      ${String(cleanScore).padStart(3)}/5   (${elems} elementi)`);
+
+  // ── Report ────────────────────────────────────────────────────────────────────
+  const grade = score >= 80 ? '✅ APPROVA — sembra un gioco'
+              : score >= 60 ? '⚠️  DA MIGLIORARE — ancora troppo pubblicitario'
+              :               '❌ RIGENERA — aspetto promozionale domina';
+  const label = FORMAT_SIZES[formatKey]?.label ?? formatKey;
+  const tag   = `[Marketing Score] ${label}`;
+
+  console.group(`${tag}  ${score}/100  ${grade}`);
+  details.forEach(d => console.log('  ' + d));
+  if (score < 80) {
+    const gaps = [];
+    if (curiScore  < 20) gaps.push(`+${20  - curiScore}  curiosità (headline game-style)`);
+    if (urgScore   < 15) gaps.push(`+${15  - urgScore}  urgenza (scadenza, "premi limitati")`);
+    if (gameScore  < 20) gaps.push(`+${20  - gameScore}  gamification`);
+    if (prizeScore < 20) gaps.push(`+${20  - prizeScore}  premio dominante`);
+    console.warn(`  → Punti mancanti: ${100 - score}  |  Migliorare: ${gaps.slice(0,2).join('  ·  ')}`);
+    if (score < 60) console.error('  ❌ Asset da RIGENERARE — domanda: "Sembra un gioco o una pubblicità?" → PUBBLICITÀ');
+  } else {
+    console.log('  → Domanda finale: "Sembra un gioco o una pubblicità?" → GIOCO ✅');
+  }
+  console.groupEnd();
+
+  return { score, grade, details };
+}
+
 // ─── Channel parent → children check/uncheck ─────────────────────────────────
 
 function initChannelCheckboxes() {
@@ -1936,6 +2998,13 @@ formatPreviewSelect.addEventListener('change', () => {
   updateStoryNav(formatPreviewSelect.value);
   renderCanvas();
 });
+
+if (printConceptSelect) {
+  printConceptSelect.addEventListener('change', () => {
+    state.printConcept = printConceptSelect.value;
+    renderCanvas('a4');
+  });
+}
 
 document.getElementById('storyPrevBtn').addEventListener('click', () => {
   state.storyFrame = (state.storyFrame - 1 + STORY_FRAMES.length) % STORY_FRAMES.length;
@@ -2105,7 +3174,164 @@ function runTests() {
   if (m2Failed > 0) console.warn(`  ⚠️  ${m2Failed} test falliti — verificare validateLayout`);
   console.groupEnd();
 
-  return { passed: passed + m2Passed, failed: failed + m2Failed };
+  // ── M3A: computePrintLayout ───────────────────────────────────────────────
+  const W3A = FORMAT_SIZES.a4.width, H3A = FORMAT_SIZES.a4.height;
+  let m3Passed = 0, m3Failed = 0;
+  function assert3(name, condition) {
+    if (condition) { console.log(`  ✅ PASS — ${name}`); m3Passed++; }
+    else           { console.warn(`  ❌ FAIL — ${name}`); m3Failed++; }
+  }
+
+  function zoneSum(l) {
+    return l.headerEnd
+      + (l.heroEnd    - l.headerEnd)
+      + (l.prizeEnd   - l.heroEnd)
+      + (l.qrEnd      - l.prizeEnd)
+      + (H3A          - l.qrEnd);
+  }
+
+  console.group('[M3A] computePrintLayout — A4 (1240×1754)');
+
+  // ── Caso 1: Bar del Porto — Birra 50cl gratis (≤20 chars)
+  const lBirra = computePrintLayout({
+    headline: 'Inquadra e vinci', prizeText: '🍺 Birra 50cl gratis',
+    subtitle: '', campaignName: 'Birra Gratis', expiresText: '',
+  }, W3A, H3A);
+  assert3('Bar del Porto: zone sum = H',           zoneSum(lBirra) === H3A);
+  assert3('Bar del Porto: QR >= W×0.28 = 347px',  lBirra.qrSz >= Math.round(W3A * 0.28));
+  assert3('Bar del Porto: QR <= W×0.36 = 446px',  lBirra.qrSz <= Math.round(W3A * 0.36));
+  assert3('Bar del Porto: QR > attuale 278px',     lBirra.qrSz > 278);
+  assert3('Bar del Porto: prizeMaxLines = 2',      lBirra.prizeMaxLines === 2);
+  assert3('Bar del Porto: prizeH = round(H×0.15)', lBirra.prizeEnd - lBirra.heroEnd === Math.round(H3A * 0.15));
+  console.log(`  ℹ️  Birra: headerH=${lBirra.headerEnd} heroH=${lBirra.heroH} prizeH=${lBirra.prizeH} qrH=${lBirra.qrH} footerH=${lBirra.footerH} qrSz=${lBirra.qrSz}px`);
+
+  // ── Caso 2: Cena per Due Persone (20 chars)
+  const lCena = computePrintLayout({
+    headline: 'Inquadra e vinci', prizeText: 'Cena per Due Persone',
+    subtitle: '', campaignName: 'Cena Romantica', expiresText: '',
+  }, W3A, H3A);
+  assert3('Cena (20c): zone sum = H',          zoneSum(lCena) === H3A);
+  assert3('Cena (20c): QR > 278px',             lCena.qrSz > 278);
+  assert3('Cena (20c): prizeMaxLines = 2',      lCena.prizeMaxLines === 2);
+  console.log(`  ℹ️  Cena: headerH=${lCena.headerEnd} heroH=${lCena.heroH} prizeH=${lCena.prizeH} qrH=${lCena.qrH} footerH=${lCena.footerH} qrSz=${lCena.qrSz}px`);
+
+  // ── Caso 3: Trattamento Viso Completo del Valore di 150 Euro (48 chars)
+  const lTratt = computePrintLayout({
+    headline: 'Inquadra e vinci', prizeText: 'Trattamento Viso Completo del Valore di 150 Euro',
+    subtitle: '', campaignName: 'Beauty Week', expiresText: '',
+  }, W3A, H3A);
+  assert3('Trattamento (48c): zone sum = H',           zoneSum(lTratt) === H3A);
+  assert3('Trattamento (48c): QR > 278px',              lTratt.qrSz > 278);
+  assert3('Trattamento (48c): prizeMaxLines = 3',       lTratt.prizeMaxLines === 3);
+  assert3('Trattamento (48c): prizeH = round(H×0.22)', lTratt.prizeEnd - lTratt.heroEnd === Math.round(H3A * 0.22));
+  console.log(`  ℹ️  Trattamento: headerH=${lTratt.headerEnd} heroH=${lTratt.heroH} prizeH=${lTratt.prizeH} qrH=${lTratt.qrH} footerH=${lTratt.footerH} qrSz=${lTratt.qrSz}px`);
+
+  // ── Caso 4: Voucher Viaggio Weekend per Due Persone (39 chars)
+  const lViaggio = computePrintLayout({
+    headline: 'Scopri il tuo premio', prizeText: 'Voucher Viaggio Weekend per Due Persone',
+    subtitle: '', campaignName: 'Viaggia con Noi', expiresText: '',
+  }, W3A, H3A);
+  assert3('Viaggio (39c): zone sum = H',           zoneSum(lViaggio) === H3A);
+  assert3('Viaggio (39c): QR > 278px',              lViaggio.qrSz > 278);
+  assert3('Viaggio (39c): prizeMaxLines = 2',       lViaggio.prizeMaxLines === 2);
+  assert3('Viaggio (39c): prizeH = round(H×0.19)', lViaggio.prizeEnd - lViaggio.heroEnd === Math.round(H3A * 0.19));
+  console.log(`  ℹ️  Viaggio: headerH=${lViaggio.headerEnd} heroH=${lViaggio.heroH} prizeH=${lViaggio.prizeH} qrH=${lViaggio.qrH} footerH=${lViaggio.footerH} qrSz=${lViaggio.qrSz}px`);
+
+  // ── Caso 5: Premio 100+ caratteri
+  const lLungo = computePrintLayout({
+    headline: 'Partecipa ora', prizeText: 'Buono Acquisto del Valore di Cento Euro Spendibile in Tutti i Nostri Punti Vendita',
+    subtitle: '', campaignName: 'Maxi Premio', expiresText: '',
+  }, W3A, H3A);
+  assert3('100+ chars: zone sum = H',         zoneSum(lLungo) === H3A);
+  assert3('100+ chars: QR > 278px',            lLungo.qrSz > 278);
+  assert3('100+ chars: prizeMaxLines = 3',     lLungo.prizeMaxLines === 3);
+  assert3('100+ chars: prizeH = round(H×0.22)', lLungo.prizeEnd - lLungo.heroEnd === Math.round(H3A * 0.22));
+  console.log(`  ℹ️  100+ chars: headerH=${lLungo.headerEnd} heroH=${lLungo.heroH} prizeH=${lLungo.prizeH} qrH=${lLungo.qrH} footerH=${lLungo.footerH} qrSz=${lLungo.qrSz}px`);
+
+  // ── Caso extra: con scadenza
+  const lScad = computePrintLayout({
+    headline: 'Gioca ora', prizeText: '🍺 Birra gratis',
+    subtitle: '', campaignName: '', expiresText: 'Valido fino al 31/12/2026',
+  }, W3A, H3A);
+  assert3('Con scadenza: footerH >= round(H×0.07)', H3A - lScad.qrEnd >= Math.round(H3A * 0.07));
+  assert3('Con scadenza: zone sum = H',              zoneSum(lScad) === H3A);
+  assert3('Con scadenza: QR > 278px',                lScad.qrSz > 278);
+  console.log(`  ℹ️  Scadenza: footerH=${lScad.footerH} qrSz=${lScad.qrSz}px`);
+
+  // ── Caso extra: no prize
+  const lNoPrize = computePrintLayout({
+    headline: 'Partecipa al gioco', prizeText: '',
+    subtitle: '', campaignName: '', expiresText: '',
+  }, W3A, H3A);
+  assert3('No prize: zone sum = H',   zoneSum(lNoPrize) === H3A);
+  assert3('No prize: QR > 278px',      lNoPrize.qrSz > 278);
+  assert3('No prize: prizeH <= round(H×0.12)', lNoPrize.prizeH <= Math.round(H3A * 0.12));
+  console.log(`  ℹ️  No prize: prizeH=${lNoPrize.prizeH} qrSz=${lNoPrize.qrSz}px`);
+
+  // ── Tutti i casi superano 278px (QR attuale)
+  assert3('Tutti i casi M3A: QR > 278px (attuale)', [lBirra, lCena, lTratt, lViaggio, lLungo, lScad, lNoPrize].every(l => l.qrSz > 278));
+
+  console.log(`\n  Risultato M3A: ${m3Passed}/${m3Passed + m3Failed} test superati`);
+  if (m3Failed > 0) console.warn(`  ⚠️  ${m3Failed} test falliti — verificare computePrintLayout`);
+  console.groupEnd();
+
+  // ── Marketing Validator tests ─────────────────────────────────────────────────
+  console.group('  ▶ Marketing Validator — validateMarketing()');
+  let mkPassed = 0, mkFailed = 0;
+
+  function assertMk(label, condition) {
+    if (condition) { mkPassed++; console.log('    ✅', label); }
+    else           { mkFailed++; console.error('    ❌', label); }
+  }
+
+  const W_a4 = 1240, H_a4 = 1754;
+  const boxesA4 = computeBoxes_a4({ prizeText: '🍺 Birra 50cl gratis', headline: 'Inquadra e vinci', storeName: 'Bar del Porto' }, W_a4, H_a4);
+
+  // Bar del Porto: premio presente → R1 PASS
+  const mkBarPorto = validateMarketing(
+    { prizeText: '🍺 Birra 50cl gratis', headline: 'Inquadra e vinci', cta: 'Gioca ora', storeName: 'Bar del Porto', logoImage: null, expiresText: '' },
+    boxesA4, 'a4'
+  );
+  assertMk('MK-01 Bar del Porto: R1 premio presente',         mkBarPorto.fail.filter(f => f.startsWith('R1')).length === 0);
+  assertMk('MK-02 Bar del Porto: R2 headline prize-driven',   mkBarPorto.fail.filter(f => f.startsWith('R2 Headline generi')).length === 0);
+  assertMk('MK-03 Bar del Porto: R3 QR ≥ 30% larghezza',     mkBarPorto.fail.filter(f => f.startsWith('R3')).length === 0);
+  assertMk('MK-04 Bar del Porto: R4 CTA presente',            mkBarPorto.fail.filter(f => f.startsWith('R4')).length === 0);
+  assertMk('MK-05 Bar del Porto: R7 urgenza warn (no date)',  mkBarPorto.warn.filter(w => w.startsWith('R7')).length > 0);
+
+  // Nessun premio → R1 FAIL + R8 FAIL
+  const mkNoPrize = validateMarketing(
+    { prizeText: '', headline: '', cta: 'Gioca ora', storeName: 'Bar', logoImage: null, expiresText: '' },
+    null, 'a4'
+  );
+  assertMk('MK-06 Nessun premio: R1 deve fallire',            mkNoPrize.fail.filter(f => f.startsWith('R1')).length > 0);
+  assertMk('MK-07 Nessun premio: R8 (meta) deve fallire',     mkNoPrize.fail.filter(f => f.startsWith('R8')).length > 0);
+
+  // Headline generica con premio presente → R2 FAIL
+  const mkGeneric = validateMarketing(
+    { prizeText: '', headline: 'Inquadra e vinci', cta: 'Gioca', storeName: 'Bar', logoImage: null, expiresText: '' },
+    null, 'a4'
+  );
+  assertMk('MK-08 Headline generica senza premio: R2 fallisce', mkGeneric.fail.filter(f => f.startsWith('R2 Headline')).length > 0);
+
+  // Con scadenza → R7 warn o pass (debole ma presente)
+  const mkWithDate = validateMarketing(
+    { prizeText: '🍺 Birra gratis', headline: '', cta: 'Gioca', storeName: 'Bar', logoImage: null, expiresText: 'Valido fino al 31/12/2026' },
+    boxesA4, 'a4'
+  );
+  assertMk('MK-09 Con scadenza: R7 non produce FAIL',          mkWithDate.fail.filter(f => f.startsWith('R7')).length === 0);
+
+  // Con urgenza forte → R7 PASS
+  const mkUrgent = validateMarketing(
+    { prizeText: '🍺 Birra gratis', headline: '', cta: 'Gioca', storeName: 'Bar', logoImage: null, expiresText: 'Solo oggi — ultimi premi disponibili' },
+    boxesA4, 'a4'
+  );
+  assertMk('MK-10 Urgenza forte: R7 PASS',                     mkUrgent.pass.filter(p => p.startsWith('R7')).length > 0);
+
+  console.log(`\n  Risultato Marketing Validator: ${mkPassed}/${mkPassed + mkFailed} test superati`);
+  if (mkFailed > 0) console.warn(`  ⚠️  ${mkFailed} test falliti — verificare validateMarketing`);
+  console.groupEnd();
+
+  return { passed: passed + m2Passed + m3Passed + mkPassed, failed: failed + m2Failed + m3Failed + mkFailed };
 }
 
 initChannelCheckboxes();
