@@ -1,4 +1,3 @@
-const TOKEN_KEY = 'gv_store_token';
 const USER_KEY = 'gv_store_user';
 
 const form = document.getElementById('registerForm');
@@ -88,7 +87,6 @@ async function registerStore(event) {
       throw new Error(validation || payload.error || 'Registrazione non riuscita.');
     }
 
-    sessionStorage.setItem(TOKEN_KEY, payload.data.token);
     sessionStorage.setItem(USER_KEY, JSON.stringify(payload.data.user));
     showSuccess(`Account creato. Trial attivo per ${payload.data.trialDays} giorni.`);
     setTimeout(() => {

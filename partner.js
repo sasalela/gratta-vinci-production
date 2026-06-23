@@ -1,4 +1,3 @@
-const TOKEN_KEY = 'gv_partner_token';
 const EMAIL_KEY = 'gv_partner_email';
 
 const loginSection = document.getElementById('loginSection');
@@ -69,10 +68,6 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString('it-IT');
 }
 
-function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY);
-}
-
 function setMessage(el, message) {
   el.textContent = message;
   show(el);
@@ -89,13 +84,11 @@ async function api(path, options = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
       ...(options.headers || {})
     }
   });
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401 || response.status === 403) {
-    sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(EMAIL_KEY);
   }
   if (!response.ok || !payload.success) {
@@ -196,7 +189,6 @@ async function login() {
       throw new Error('Questa pagina è riservata ai gestori.');
     }
 
-    sessionStorage.setItem(TOKEN_KEY, payload.data.token);
     sessionStorage.setItem(EMAIL_KEY, payload.data.user.email);
     hide(loginSection);
     show(appSection);
@@ -261,8 +253,8 @@ async function saveUser(event) {
   }
 }
 
-function logout() {
-  sessionStorage.removeItem(TOKEN_KEY);
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   sessionStorage.removeItem(EMAIL_KEY);
   show(loginSection);
   hide(appSection);
@@ -277,7 +269,7 @@ logoutBtn.addEventListener('click', logout);
 storeForm.addEventListener('submit', saveStore);
 userForm.addEventListener('submit', saveUser);
 
-if (getToken()) {
+if (sessionStorage.getItem(EMAIL_KEY)) {
   hide(loginSection);
   show(appSection);
   loadAll().catch((error) => {

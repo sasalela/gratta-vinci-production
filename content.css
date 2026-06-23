@@ -163,6 +163,133 @@ canvas {
   display: none;
 }
 
+/* ── Section labels & hints ──────────────────────────────────────── */
+
+.section-label {
+  color: #667eea;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-top: 18px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.hint {
+  color: #9ca3af;
+  font-size: 0.76rem;
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+
+/* ── Channel selection ───────────────────────────────────────────── */
+
+.channel-group {
+  border: 1px solid #f1f3f7;
+  border-radius: 12px;
+  margin: 8px 0;
+  overflow: hidden;
+}
+
+.channel-head {
+  align-items: center;
+  background: #f8fafc;
+  cursor: pointer;
+  display: flex;
+  font-weight: 700;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.channel-head input[type="checkbox"] {
+  accent-color: #667eea;
+  border-radius: 4px;
+  cursor: pointer;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  width: 16px;
+}
+
+.channel-formats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px 10px 16px;
+}
+
+.channel-formats label {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.83rem;
+  font-weight: 400;
+  gap: 10px;
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+
+.channel-formats label:hover {
+  background: #f0f4ff;
+}
+
+.channel-formats input[type="checkbox"] {
+  accent-color: #667eea;
+  cursor: pointer;
+  flex-shrink: 0;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  width: 15px;
+}
+
+/* ── Download all button ─────────────────────────────────────────── */
+
+.btn-download-all {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  margin-top: 14px;
+}
+
+/* ── Story frame navigation ──────────────────────────────────────── */
+
+.story-nav {
+  align-items: center;
+  background: #f3f5f9;
+  border-radius: 12px;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 8px 12px;
+}
+
+.story-nav button {
+  background: #e5e7eb;
+  border-radius: 8px;
+  color: #172033;
+  font-size: 1rem;
+  margin-top: 0;
+  padding: 6px 14px;
+  width: auto;
+}
+
+.story-nav button:hover {
+  background: #d1d5db;
+}
+
+#storyFrameLabel {
+  color: #6b7280;
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+}
+
 @media (max-width: 980px) {
   .layout {
     grid-template-columns: 1fr;

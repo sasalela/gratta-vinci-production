@@ -1,4 +1,3 @@
-const TOKEN_KEY = 'gv_admin_token';
 const EMAIL_KEY = 'gv_admin_email';
 
 const loginSection = document.getElementById('loginSection');
@@ -150,10 +149,6 @@ function renderTable(container, columns, rows) {
   container.innerHTML = `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
-function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY);
-}
-
 function showLoginError(message) {
   loginError.textContent = message;
   show(loginError);
@@ -203,7 +198,6 @@ async function adminApi(path, options = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
       ...(options.headers || {})
     }
   });
@@ -211,7 +205,6 @@ async function adminApi(path, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (response.status === 401) {
-    sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(EMAIL_KEY);
     showLogin();
     throw new Error('Sessione scaduta. Accedi di nuovo.');
@@ -701,7 +694,6 @@ async function login() {
       return;
     }
 
-    sessionStorage.setItem(TOKEN_KEY, payload.data.token);
     sessionStorage.setItem(EMAIL_KEY, payload.data.user.email);
     showDashboard(payload.data.user.email);
     await loadDashboardData();
@@ -713,8 +705,8 @@ async function login() {
   }
 }
 
-function logout() {
-  sessionStorage.removeItem(TOKEN_KEY);
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   sessionStorage.removeItem(EMAIL_KEY);
   showLogin();
 }
@@ -750,10 +742,9 @@ adminPasswordInput.addEventListener('keydown', (event) => {
   }
 });
 
-const savedToken = getToken();
 const savedEmail = sessionStorage.getItem(EMAIL_KEY);
 
-if (savedToken && savedEmail) {
+if (savedEmail) {
   showDashboard(savedEmail);
   loadDashboardData();
 }

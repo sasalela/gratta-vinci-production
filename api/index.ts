@@ -321,12 +321,25 @@ function selectPrize(prizes: Prize[]): Prize {
   return prizes[prizes.length - 1];
 }
 
+function setSessionCookie(token: string, req?: VercelRequest): string {
+  const proto = req?.headers?.['x-forwarded-proto'];
+  const isHttps = proto === 'https' || process.env.VERCEL_ENV === 'production';
+  const secureFlag = isHttps ? '; Secure' : '';
+  return `gv_session=${token}; HttpOnly${secureFlag}; SameSite=Strict; Path=/api; Max-Age=${60 * 60 * 8}`;
+}
+
 function getAuthToken(req: VercelRequest): string | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
   }
-  return authHeader.substring(7);
+  if (req.cookies?.gv_session) {
+    return req.cookies.gv_session;
+  }
+  // fallback: parse cookie header manually (needed in some vercel dev versions)
+  const raw = req.headers.cookie ?? '';
+  const match = raw.match(/(?:^|;\s*)gv_session=([^;]+)/);
+  return match ? match[1] : null;
 }
 
 function parsePrizes(value: unknown): Prize[] {
@@ -710,11 +723,13 @@ async function createPrizesExhaustedAlert(storeId: string, campaignId: string, c
   });
 }
 
-async function tryClaimPrize(prizeId: string) {
-  const prize = await prisma.prize.findFirst({ where: { id: prizeId } });
+type PrismaTx = Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+
+async function tryClaimPrize(prizeId: string, tx: PrismaTx = prisma) {
+  const prize = await tx.prize.findFirst({ where: { id: prizeId } });
   if (!prize) return null;
 
-  const updated = await prisma.prize.updateMany({
+  const updated = await tx.prize.updateMany({
     where: {
       id: prizeId,
       remainingQuantity: { gt: 0 }
@@ -762,8 +777,8 @@ async function validateCampaignPrizeProbabilities(campaignId: string, guaranteed
   return null;
 }
 
-async function pickInventoryPrize(campaignId: string, guaranteedWin = false) {
-  const prizes = await prisma.prize.findMany({
+async function pickInventoryPrize(campaignId: string, guaranteedWin = false, tx: PrismaTx = prisma) {
+  const prizes = await tx.prize.findMany({
     where: {
       campaignId,
       active: true,
@@ -784,21 +799,21 @@ async function pickInventoryPrize(campaignId: string, guaranteedWin = false) {
 
       if (totalWeight <= 0) {
         const randomIndex = Math.floor(Math.random() * pool.length);
-        return tryClaimPrize(pool[randomIndex].id);
+        return tryClaimPrize(pool[randomIndex].id, tx);
       }
 
       let random = Math.random() * totalWeight;
       for (const prize of pool) {
         random -= prize.winProbability;
         if (random <= 0) {
-          const claimed = await tryClaimPrize(prize.id);
+          const claimed = await tryClaimPrize(prize.id, tx);
           if (claimed) return claimed;
           break;
         }
       }
 
       for (const prize of pool) {
-        const claimed = await tryClaimPrize(prize.id);
+        const claimed = await tryClaimPrize(prize.id, tx);
         if (claimed) return claimed;
       }
 
@@ -814,7 +829,7 @@ async function pickInventoryPrize(campaignId: string, guaranteedWin = false) {
   for (const prize of prizes) {
     cumulative += prize.winProbability;
     if (random <= cumulative) {
-      const claimed = await tryClaimPrize(prize.id);
+      const claimed = await tryClaimPrize(prize.id, tx);
       if (claimed) return claimed;
     }
   }
@@ -896,10 +911,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         normalizedEmail === adminEmail &&
         safeEqual(password, adminPassword)
       ) {
+        const adminToken = signToken({ sub: 'super_admin', role: 'super_admin' });
+        res.setHeader('Set-Cookie', setSessionCookie(adminToken, req));
         return res.json({
           success: true,
           data: {
-            token: signToken({ sub: 'super_admin', role: 'super_admin' }),
+            token: adminToken,
             user: { email: adminEmail, role: 'super_admin' }
           }
         });
@@ -923,15 +940,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
+      const userToken = signToken({
+        sub: user.id,
+        role: user.role,
+        storeId: user.storeId,
+        partnerId: user.partnerId
+      });
+      res.setHeader('Set-Cookie', setSessionCookie(userToken, req));
       return res.json({
         success: true,
         data: {
-          token: signToken({
-            sub: user.id,
-            role: user.role,
-            storeId: user.storeId,
-            partnerId: user.partnerId
-          }),
+          token: userToken,
           user: {
             id: user.id,
             email: user.email,
@@ -942,6 +961,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
       });
+    }
+
+    if (path === '/api/auth/logout' && method === 'POST') {
+      const proto = req.headers?.['x-forwarded-proto'];
+      const isHttps = proto === 'https' || process.env.VERCEL_ENV === 'production';
+      const secureFlag = isHttps ? '; Secure' : '';
+      res.setHeader('Set-Cookie', `gv_session=; Max-Age=0; Path=/api; HttpOnly${secureFlag}; SameSite=Strict`);
+      return res.json({ success: true });
     }
 
     if (path === '/api/auth/register-store' && method === 'POST') {
@@ -1015,15 +1042,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return { store, user };
       });
 
+      const storeToken = signToken({
+        sub: created.user.id,
+        role: created.user.role,
+        storeId: created.user.storeId,
+        partnerId: created.user.partnerId
+      });
+      res.setHeader('Set-Cookie', setSessionCookie(storeToken, req));
       return res.status(201).json({
         success: true,
         data: {
-          token: signToken({
-            sub: created.user.id,
-            role: created.user.role,
-            storeId: created.user.storeId,
-            partnerId: created.user.partnerId
-          }),
+          token: storeToken,
           trialDays,
           store: created.store,
           user: {
@@ -1229,63 +1258,84 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientIp,
         deviceKey
       });
-      const previousPlays = await prisma.participation.count({
-        where: { sessionKey, campaignId: campaign.id }
-      });
-
-      if (previousPlays >= 1) {
-        return res.status(429).json({
-          success: false,
-          error: 'Maximum plays reached'
-        });
-      }
-
-      const selectedPrize = await pickInventoryPrize(campaign.id, campaign.guaranteedWin);
-
-      if (campaign.guaranteedWin && !selectedPrize) {
-        return res.status(410).json({
-          success: false,
-          error: 'Tutti i premi sono esauriti. Riprova più tardi o contatta il negozio.'
-        });
-      }
 
       const expiresAt = new Date(
         now.getTime() + campaign.voucherValidityDays * 24 * 60 * 60 * 1000
       );
 
-      const participation = await prisma.participation.create({
-        data: {
-          sessionKey,
-          campaignId: campaign.id,
-          email,
-          clientIp,
-          userAgent: typeof userAgent === 'string' ? userAgent : undefined,
-          deviceKey,
-          customerData,
-          outcome: selectedPrize ? 'won' : 'lost',
-          prizeId: selectedPrize?.id,
-          voucher: selectedPrize
-            ? {
-                create: {
-                  code: generateVoucherCode(),
-                  campaignId: campaign.id,
-                  storeId: campaign.store.id,
-                  prize: {
-                    id: selectedPrize.id,
-                    name: selectedPrize.name,
-                    emoji: selectedPrize.emoji,
-                    description: selectedPrize.description
-                  },
-                  email,
-                  expiresAt
-                }
-              }
-            : undefined
-        },
-        include: { voucher: true }
-      });
+      let claimedPrize: Awaited<ReturnType<typeof pickInventoryPrize>> = null;
+      let participation: Awaited<ReturnType<typeof prisma.participation.create<{ include: { voucher: true } }>>>;
 
-      if (selectedPrize) {
+      try {
+        const result = await prisma.$transaction(async (tx) => {
+          const existing = await tx.participation.findFirst({
+            where: { sessionKey, campaignId: campaign.id }
+          });
+          if (existing) {
+            const err = new Error('duplicate');
+            (err as any).isDuplicate = true;
+            throw err;
+          }
+
+          const prize = await pickInventoryPrize(campaign.id, campaign.guaranteedWin, tx as PrismaTx);
+
+          if (campaign.guaranteedWin && !prize) {
+            const err = new Error('prizes_exhausted');
+            (err as any).isPrizesExhausted = true;
+            throw err;
+          }
+
+          const created = await tx.participation.create({
+            data: {
+              sessionKey,
+              campaignId: campaign.id,
+              email,
+              clientIp,
+              userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+              deviceKey,
+              customerData,
+              outcome: prize ? 'won' : 'lost',
+              prizeId: prize?.id,
+              voucher: prize
+                ? {
+                    create: {
+                      code: generateVoucherCode(),
+                      campaignId: campaign.id,
+                      storeId: campaign.store.id,
+                      prize: {
+                        id: prize.id,
+                        name: prize.name,
+                        emoji: prize.emoji,
+                        description: prize.description
+                      },
+                      email,
+                      expiresAt
+                    }
+                  }
+                : undefined
+            },
+            include: { voucher: true }
+          });
+
+          return { created, prize };
+        });
+
+        claimedPrize = result.prize;
+        participation = result.created;
+      } catch (err: unknown) {
+        if ((err as any)?.isDuplicate || (err as any)?.code === 'P2002') {
+          return res.status(429).json({ success: false, error: 'Maximum plays reached' });
+        }
+        if ((err as any)?.isPrizesExhausted) {
+          return res.status(410).json({
+            success: false,
+            error: 'Tutti i premi sono esauriti. Riprova più tardi o contatta il negozio.'
+          });
+        }
+        throw err;
+      }
+
+      if (claimedPrize) {
         await createPrizesExhaustedAlert(campaign.store.id, campaign.id, campaign.name);
       }
 
@@ -1293,18 +1343,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         success: true,
         data: {
           sessionId: participation.id,
-          won: Boolean(selectedPrize),
-          prize: selectedPrize
-            ? {
-                id: selectedPrize.id,
-                name: selectedPrize.name,
-                emoji: selectedPrize.emoji,
-                description: selectedPrize.description
-              }
-            : null,
+          revealToken: signToken({ sub: participation.id, role: 'reveal' }, 3600)
+        }
+      });
+    }
+
+    if (path === '/api/public/reveal' && method === 'POST') {
+      const rawToken = typeof req.body?.revealToken === 'string' ? req.body.revealToken : null;
+      const revealPayload = verifyToken(rawToken);
+
+      if (!revealPayload || revealPayload.role !== 'reveal') {
+        return res.status(400).json({ success: false, error: 'Token non valido o scaduto.' });
+      }
+
+      const participationId = revealPayload.sub;
+
+      const participation = await prisma.participation.findUnique({
+        where: { id: participationId },
+        include: {
+          voucher: true,
+          campaign: { select: { loseMessage: true } }
+        }
+      });
+
+      if (!participation) {
+        return res.status(404).json({ success: false, error: 'Partecipazione non trovata.' });
+      }
+
+      const prize = participation.voucher?.prize as { id: string; name: string; emoji: string; description: string } | null ?? null;
+
+      return res.json({
+        success: true,
+        data: {
+          won: participation.outcome === 'won',
+          prize,
           voucherCode: participation.voucher?.code || null,
           expiresAt: participation.voucher?.expiresAt.toISOString() || null,
-          loseMessage: campaign.loseMessage
+          loseMessage: participation.campaign.loseMessage
         }
       });
     }

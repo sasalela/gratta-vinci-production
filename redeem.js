@@ -1,4 +1,3 @@
-const TOKEN_KEY = 'gv_store_token';
 const USER_KEY = 'gv_store_user';
 
 const params = new URLSearchParams(window.location.search);
@@ -27,10 +26,6 @@ function hide(el) {
   el.classList.add('hidden');
 }
 
-function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY);
-}
-
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -53,14 +48,12 @@ async function api(path, options = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
       ...(options.headers || {})
     }
   });
   const payload = await response.json().catch(() => ({}));
 
   if (response.status === 401 || response.status === 403) {
-    sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
     throw new Error('Accedi con l’account del negozio per continuare.');
   }
@@ -166,7 +159,6 @@ async function login() {
       throw new Error('Questo utente non è collegato a un negozio.');
     }
 
-    sessionStorage.setItem(TOKEN_KEY, payload.data.token);
     sessionStorage.setItem(USER_KEY, JSON.stringify(payload.data.user));
     hide(loginSection);
     await validateVoucher();
@@ -205,7 +197,7 @@ passwordInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') login();
 });
 
-if (getToken()) {
+if (sessionStorage.getItem(USER_KEY)) {
   validateVoucher();
 } else {
   voucherCodeLabel.textContent = voucherCode || '-';
