@@ -1,0 +1,17 @@
+---
+description: Regole API e sicurezza
+alwaysApply: true
+---
+
+Le API devono essere sicure e coerenti.
+Valida sempre input, tipi e lunghezze.
+Non esporre errori interni al client.
+Non loggare segreti, token o dati sensibili.
+Mantieni separate le route pubbliche da quelle protette.
+Ogni operazione multi-tenant deve rispettare lo store o tenant attivo.
+Usa risposte JSON semplici e prevedibili.
+Le azioni di scrittura devono essere atomiche quando coinvolgono premi, voucher o stock.
+Evita logica duplicata tra frontend e backend.
+---
+
+
