@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "npx vercel dev --listen 3000",
     "deploy": "vercel --prod",
+    "test": "tsx --test tests/**/*.test.ts",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",

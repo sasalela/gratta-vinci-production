@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/db';
+import {
+  buildRevealPayload,
+  executePlay,
+  executeRedeem
+} from '../lib/game-flow';
 
 // ==========================================
 // SCHEMAS
@@ -298,15 +303,6 @@ function verifyToken(token: string | null): AuthTokenPayload | null {
   }
 }
 
-function generateVoucherCode(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `${code}-${Date.now().toString(36).toUpperCase()}`;
-}
-
 function selectPrize(prizes: Prize[]): Prize {
   const random = Math.random() * 100;
   let cumulative = 0;
@@ -397,23 +393,6 @@ function validateCustomerData(fields: CustomerField[], customerData: Record<stri
   }
 
   return errors;
-}
-
-function buildSessionKey(params: {
-  campaignId: string;
-  playLimitMode: string;
-  email: string;
-  clientIp: string;
-  deviceKey?: string;
-}) {
-  const day = new Date().toISOString().slice(0, 10);
-  const identity = [params.email, params.clientIp, params.deviceKey || 'no-device'].join('_');
-
-  if (params.playLimitMode === 'per_day') {
-    return `${params.campaignId}_${day}_${identity}`;
-  }
-
-  return `${params.campaignId}_${identity}`;
 }
 
 function slugify(value: string): string {
@@ -723,29 +702,6 @@ async function createPrizesExhaustedAlert(storeId: string, campaignId: string, c
   });
 }
 
-type PrismaTx = Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
-
-async function tryClaimPrize(prizeId: string, tx: PrismaTx = prisma) {
-  const prize = await tx.prize.findFirst({ where: { id: prizeId } });
-  if (!prize) return null;
-
-  const updated = await tx.prize.updateMany({
-    where: {
-      id: prizeId,
-      remainingQuantity: { gt: 0 }
-    },
-    data: {
-      remainingQuantity: { decrement: 1 }
-    }
-  });
-
-  if (updated.count === 1) {
-    return prize;
-  }
-
-  return null;
-}
-
 async function getCampaignPrizeProbabilitySummary(campaignId: string) {
   const prizes = await prisma.prize.findMany({
     where: { campaignId, active: true, winProbability: { gt: 0 } },
@@ -772,66 +728,6 @@ async function validateCampaignPrizeProbabilities(campaignId: string, guaranteed
 
   if (totalProbability > 100) {
     return `La somma delle probabilità dei premi attivi (${totalProbability}%) supera il 100%.`;
-  }
-
-  return null;
-}
-
-async function pickInventoryPrize(campaignId: string, guaranteedWin = false, tx: PrismaTx = prisma) {
-  const prizes = await tx.prize.findMany({
-    where: {
-      campaignId,
-      active: true,
-      remainingQuantity: { gt: 0 },
-      winProbability: { gt: 0 }
-    },
-    orderBy: { createdAt: 'asc' }
-  });
-
-  if (!prizes.length) {
-    return null;
-  }
-
-  if (guaranteedWin) {
-    const totalWeight = prizes.reduce((sum, prize) => sum + prize.winProbability, 0);
-    const pickFromPool = async (pool: typeof prizes) => {
-      if (!pool.length) return null;
-
-      if (totalWeight <= 0) {
-        const randomIndex = Math.floor(Math.random() * pool.length);
-        return tryClaimPrize(pool[randomIndex].id, tx);
-      }
-
-      let random = Math.random() * totalWeight;
-      for (const prize of pool) {
-        random -= prize.winProbability;
-        if (random <= 0) {
-          const claimed = await tryClaimPrize(prize.id, tx);
-          if (claimed) return claimed;
-          break;
-        }
-      }
-
-      for (const prize of pool) {
-        const claimed = await tryClaimPrize(prize.id, tx);
-        if (claimed) return claimed;
-      }
-
-      return null;
-    };
-
-    return pickFromPool(prizes);
-  }
-
-  const random = Math.random() * 100;
-  let cumulative = 0;
-
-  for (const prize of prizes) {
-    cumulative += prize.winProbability;
-    if (random <= cumulative) {
-      const claimed = await tryClaimPrize(prize.id, tx);
-      if (claimed) return claimed;
-    }
   }
 
   return null;
@@ -1251,100 +1147,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const sessionKey = buildSessionKey({
-        campaignId: campaign.id,
-        playLimitMode: campaign.playLimitMode,
+      const playResult = await executePlay({
+        db: prisma as any,
+        campaign: campaign as any,
         email,
         clientIp,
-        deviceKey
+        userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+        deviceKey,
+        customerData,
+        signRevealToken: (participationId) =>
+          signToken({ sub: participationId, role: 'reveal' }, 3600)
       });
 
-      const expiresAt = new Date(
-        now.getTime() + campaign.voucherValidityDays * 24 * 60 * 60 * 1000
-      );
-
-      let claimedPrize: Awaited<ReturnType<typeof pickInventoryPrize>> = null;
-      let participation: Awaited<ReturnType<typeof prisma.participation.create<{ include: { voucher: true } }>>>;
-
-      try {
-        const result = await prisma.$transaction(async (tx) => {
-          const existing = await tx.participation.findFirst({
-            where: { sessionKey, campaignId: campaign.id }
-          });
-          if (existing) {
-            const err = new Error('duplicate');
-            (err as any).isDuplicate = true;
-            throw err;
-          }
-
-          const prize = await pickInventoryPrize(campaign.id, campaign.guaranteedWin, tx as PrismaTx);
-
-          if (campaign.guaranteedWin && !prize) {
-            const err = new Error('prizes_exhausted');
-            (err as any).isPrizesExhausted = true;
-            throw err;
-          }
-
-          const created = await tx.participation.create({
-            data: {
-              sessionKey,
-              campaignId: campaign.id,
-              email,
-              clientIp,
-              userAgent: typeof userAgent === 'string' ? userAgent : undefined,
-              deviceKey,
-              customerData,
-              outcome: prize ? 'won' : 'lost',
-              prizeId: prize?.id,
-              voucher: prize
-                ? {
-                    create: {
-                      code: generateVoucherCode(),
-                      campaignId: campaign.id,
-                      storeId: campaign.store.id,
-                      prize: {
-                        id: prize.id,
-                        name: prize.name,
-                        emoji: prize.emoji,
-                        description: prize.description
-                      },
-                      email,
-                      expiresAt
-                    }
-                  }
-                : undefined
-            },
-            include: { voucher: true }
-          });
-
-          return { created, prize };
+      if (playResult.kind === 'campaign_not_found') {
+        return res.status(404).json({ success: false, error: 'Campaign not found' });
+      }
+      if (playResult.kind === 'subscription_expired') {
+        return res.status(403).json({ success: false, error: 'Store subscription expired' });
+      }
+      if (playResult.kind === 'campaign_not_active') {
+        return res.status(400).json({ success: false, error: 'Campaign not active' });
+      }
+      if (playResult.kind === 'duplicate') {
+        return res.status(429).json({ success: false, error: 'Maximum plays reached' });
+      }
+      if (playResult.kind === 'prizes_exhausted') {
+        return res.status(410).json({
+          success: false,
+          error: 'Tutti i premi sono esauriti. Riprova più tardi o contatta il negozio.'
         });
-
-        claimedPrize = result.prize;
-        participation = result.created;
-      } catch (err: unknown) {
-        if ((err as any)?.isDuplicate || (err as any)?.code === 'P2002') {
-          return res.status(429).json({ success: false, error: 'Maximum plays reached' });
-        }
-        if ((err as any)?.isPrizesExhausted) {
-          return res.status(410).json({
-            success: false,
-            error: 'Tutti i premi sono esauriti. Riprova più tardi o contatta il negozio.'
-          });
-        }
-        throw err;
       }
 
-      if (claimedPrize) {
+      if (playResult.claimedPrize) {
         await createPrizesExhaustedAlert(campaign.store.id, campaign.id, campaign.name);
       }
 
       return res.json({
         success: true,
-        data: {
-          sessionId: participation.id,
-          revealToken: signToken({ sub: participation.id, role: 'reveal' }, 3600)
-        }
+        data: playResult.responseData
       });
     }
 
@@ -1370,17 +1210,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(404).json({ success: false, error: 'Partecipazione non trovata.' });
       }
 
-      const prize = participation.voucher?.prize as { id: string; name: string; emoji: string; description: string } | null ?? null;
-
       return res.json({
         success: true,
-        data: {
-          won: participation.outcome === 'won',
-          prize,
-          voucherCode: participation.voucher?.code || null,
-          expiresAt: participation.voucher?.expiresAt.toISOString() || null,
-          loseMessage: participation.campaign.loseMessage
-        }
+        data: buildRevealPayload(participation as any)
       });
     }
 
@@ -1866,38 +1698,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(400).json({ success: false, errors: validation.error.errors });
         }
 
-        const voucher = await prisma.voucher.findFirst({
-          where: { code: validation.data.code, storeId }
+        const redeemResult = await executeRedeem({
+          db: prisma as any,
+          code: validation.data.code,
+          storeId,
+          userId: currentUser.id,
+          notes: validation.data.notes
         });
 
-        if (!voucher) {
+        if (redeemResult.kind === 'not_found') {
           return res.status(404).json({ success: false, error: 'Voucher not found' });
         }
-
-        if (voucher.redeemed) {
+        if (redeemResult.kind === 'already_redeemed') {
           return res.status(400).json({ success: false, error: 'Voucher already redeemed' });
         }
-
-        if (new Date() > voucher.expiresAt) {
+        if (redeemResult.kind === 'expired') {
           return res.status(400).json({ success: false, error: 'Voucher expired' });
         }
 
-        const redeemed = await prisma.voucher.update({
-          where: { id: voucher.id },
-          data: {
-            redeemed: true,
-            redeemedAt: new Date(),
-            redeemedByUserId: currentUser.id,
-            redemptions: {
-              create: {
-                userId: currentUser.id,
-                notes: validation.data.notes
-              }
-            }
-          }
-        });
-
-        return res.json({ success: true, data: redeemed });
+        return res.json({ success: true, data: redeemResult.voucher });
       }
 
       if (path === '/api/store/alerts' && method === 'GET') {
