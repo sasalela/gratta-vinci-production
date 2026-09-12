@@ -1,4 +1,3 @@
-const TOKEN_KEY = 'gv_store_token';
 const USER_KEY = 'gv_store_user';
 
 const loginSection = document.getElementById('loginSection');
@@ -359,10 +358,6 @@ function slugify(value) {
     .replace(/^-+|-+$/g, '');
 }
 
-function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY);
-}
-
 function setError(el, message) {
   el.textContent = message;
   show(el);
@@ -378,14 +373,12 @@ async function api(path, options = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
       ...(options.headers || {})
     }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload.success) {
     if (response.status === 401 || response.status === 403) {
-      sessionStorage.removeItem(TOKEN_KEY);
       sessionStorage.removeItem(USER_KEY);
     }
     const validation = Array.isArray(payload.errors)
@@ -676,7 +669,6 @@ async function login() {
       throw new Error('Questo utente non è collegato a un negozio.');
     }
 
-    sessionStorage.setItem(TOKEN_KEY, payload.data.token);
     sessionStorage.setItem(USER_KEY, JSON.stringify(payload.data.user));
     await showApp();
   } catch (error) {
@@ -735,7 +727,6 @@ async function loadAll() {
     resetComposer();
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
-      sessionStorage.removeItem(TOKEN_KEY);
       sessionStorage.removeItem(USER_KEY);
       hide(appSection);
       show(loginSection);
@@ -1482,9 +1473,9 @@ function stopQrScanner() {
   scannerStatus.textContent = 'Inquadra il QR della card premio.';
 }
 
-function logout() {
+async function logout() {
   stopQrScanner();
-  sessionStorage.removeItem(TOKEN_KEY);
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   sessionStorage.removeItem(USER_KEY);
   show(loginSection);
   hide(appSection);
@@ -1601,6 +1592,6 @@ document.addEventListener('click', (event) => {
 resetCampaignForm();
 resetComposer();
 
-if (getToken()) {
+if (sessionStorage.getItem(USER_KEY)) {
   showApp();
 }

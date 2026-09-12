@@ -1,0 +1,15 @@
+---
+description: Regole flusso prodotto
+alwaysApply: true
+---
+
+Il flusso deve essere semplice e lineare.
+Mostra al negoziante solo ciò che serve per configurare il gioco.
+Il giocatore deve vedere subito lo stato del gioco e il risultato.
+Non svelare l’esito prima del momento corretto.
+I premi, i voucher e le probabilità devono seguire una logica chiara e coerente.
+Se un flusso ha più passaggi, ogni passaggio deve essere esplicito.
+Le azioni di gioco devono risultare affidabili anche su mobile.
+---
+
+

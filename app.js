@@ -1,3 +1,9 @@
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 const params = new URLSearchParams(window.location.search);
 const storeSlug = params.get('store');
 const campaignSlug = params.get('campaign');
@@ -68,10 +74,12 @@ function renderDynamicFields(fields) {
     .filter((field) => field.enabled)
     .map((field) => {
       const type = field.key === 'birthDate' ? 'date' : field.key === 'email' ? 'email' : field.key === 'marketingConsent' ? 'checkbox' : 'text';
+      const safeKey = escapeHtml(field.key);
+      const safeLabel = escapeHtml(field.label);
       if (type === 'checkbox') {
-        return `<label class="checkbox-label"><input type="checkbox" data-customer-field="${field.key}"> ${field.label}</label>`;
+        return `<label class="checkbox-label"><input type="checkbox" data-customer-field="${safeKey}"> ${safeLabel}</label>`;
       }
-      return `<label for="field_${field.key}">${field.label}${field.required ? ' *' : ''}</label><input id="field_${field.key}" type="${type}" data-customer-field="${field.key}" ${field.required ? 'required' : ''}>`;
+      return `<label for="field_${safeKey}">${safeLabel}${field.required ? ' *' : ''}</label><input id="field_${safeKey}" type="${type}" data-customer-field="${safeKey}" ${field.required ? 'required' : ''}>`;
     })
     .join('');
 }
@@ -84,7 +92,11 @@ function applyCampaignBranding(config) {
   document.getElementById('subtitle').textContent = config.description || 'Compila i dati e scopri se hai vinto.';
 
   if (config.store.logoUrl) {
-    brandLogo.innerHTML = `<img src="${config.store.logoUrl}" alt="${config.store.name}">`;
+    const img = document.createElement('img');
+    img.src = config.store.logoUrl;
+    img.alt = config.store.name;
+    brandLogo.innerHTML = '';
+    brandLogo.appendChild(img);
     show(brandLogo);
   }
 
@@ -229,7 +241,7 @@ async function startPlay() {
       return;
     }
 
-    gameData = payload.data;
+    gameData = { revealToken: payload.data.revealToken };
     hide(setupForm);
     show(gameSection);
     initGame();
@@ -264,9 +276,32 @@ function initGame() {
   activeGame = PromoGames.create(gameType, gameSurface, {
     gameData,
     campaignConfig,
-    onReveal: showResult
+    onReveal: handleReveal
   });
   activeGame.start();
+}
+
+async function handleReveal() {
+  try {
+    const response = await fetch('/api/public/reveal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revealToken: gameData.revealToken })
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.success) {
+      resultDiv.textContent = payload.error || 'Impossibile ottenere il risultato.';
+      resultDiv.className = 'result loser';
+      show(finalNotice);
+      return;
+    }
+    gameData = { ...gameData, ...payload.data };
+    showResult();
+  } catch {
+    resultDiv.textContent = 'Impossibile contattare il server. Riprova più tardi.';
+    resultDiv.className = 'result loser';
+    show(finalNotice);
+  }
 }
 
 function showResult() {
@@ -275,8 +310,8 @@ function showResult() {
   if (gameData.won) {
     const expiresAt = new Date(gameData.expiresAt).toLocaleDateString('it-IT');
     resultDiv.innerHTML =
-      `<strong>${gameData.prize.emoji || ''} ${gameData.prize.name}</strong><br>` +
-      `Codice voucher: <code>${gameData.voucherCode}</code><br>` +
+      `<strong>${escapeHtml(gameData.prize.emoji || '')} ${escapeHtml(gameData.prize.name)}</strong><br>` +
+      `Codice voucher: <code>${escapeHtml(gameData.voucherCode)}</code><br>` +
       `Scade il: ${expiresAt}<br>` +
       '<span class="small-note">Scarica la card premio e conservala nella galleria del telefono.</span>';
     resultDiv.className = 'result winner';

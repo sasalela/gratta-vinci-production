@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/db';
+import {
+  buildRevealPayload,
+  executePlay,
+  executeRedeem
+} from '../lib/game-flow';
 
 // ==========================================
 // SCHEMAS
@@ -298,15 +303,6 @@ function verifyToken(token: string | null): AuthTokenPayload | null {
   }
 }
 
-function generateVoucherCode(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `${code}-${Date.now().toString(36).toUpperCase()}`;
-}
-
 function selectPrize(prizes: Prize[]): Prize {
   const random = Math.random() * 100;
   let cumulative = 0;
@@ -321,12 +317,25 @@ function selectPrize(prizes: Prize[]): Prize {
   return prizes[prizes.length - 1];
 }
 
+function setSessionCookie(token: string, req?: VercelRequest): string {
+  const proto = req?.headers?.['x-forwarded-proto'];
+  const isHttps = proto === 'https' || process.env.VERCEL_ENV === 'production';
+  const secureFlag = isHttps ? '; Secure' : '';
+  return `gv_session=${token}; HttpOnly${secureFlag}; SameSite=Strict; Path=/api; Max-Age=${60 * 60 * 8}`;
+}
+
 function getAuthToken(req: VercelRequest): string | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
   }
-  return authHeader.substring(7);
+  if (req.cookies?.gv_session) {
+    return req.cookies.gv_session;
+  }
+  // fallback: parse cookie header manually (needed in some vercel dev versions)
+  const raw = req.headers.cookie ?? '';
+  const match = raw.match(/(?:^|;\s*)gv_session=([^;]+)/);
+  return match ? match[1] : null;
 }
 
 function parsePrizes(value: unknown): Prize[] {
@@ -384,23 +393,6 @@ function validateCustomerData(fields: CustomerField[], customerData: Record<stri
   }
 
   return errors;
-}
-
-function buildSessionKey(params: {
-  campaignId: string;
-  playLimitMode: string;
-  email: string;
-  clientIp: string;
-  deviceKey?: string;
-}) {
-  const day = new Date().toISOString().slice(0, 10);
-  const identity = [params.email, params.clientIp, params.deviceKey || 'no-device'].join('_');
-
-  if (params.playLimitMode === 'per_day') {
-    return `${params.campaignId}_${day}_${identity}`;
-  }
-
-  return `${params.campaignId}_${identity}`;
 }
 
 function slugify(value: string): string {
@@ -710,27 +702,6 @@ async function createPrizesExhaustedAlert(storeId: string, campaignId: string, c
   });
 }
 
-async function tryClaimPrize(prizeId: string) {
-  const prize = await prisma.prize.findFirst({ where: { id: prizeId } });
-  if (!prize) return null;
-
-  const updated = await prisma.prize.updateMany({
-    where: {
-      id: prizeId,
-      remainingQuantity: { gt: 0 }
-    },
-    data: {
-      remainingQuantity: { decrement: 1 }
-    }
-  });
-
-  if (updated.count === 1) {
-    return prize;
-  }
-
-  return null;
-}
-
 async function getCampaignPrizeProbabilitySummary(campaignId: string) {
   const prizes = await prisma.prize.findMany({
     where: { campaignId, active: true, winProbability: { gt: 0 } },
@@ -757,66 +728,6 @@ async function validateCampaignPrizeProbabilities(campaignId: string, guaranteed
 
   if (totalProbability > 100) {
     return `La somma delle probabilità dei premi attivi (${totalProbability}%) supera il 100%.`;
-  }
-
-  return null;
-}
-
-async function pickInventoryPrize(campaignId: string, guaranteedWin = false) {
-  const prizes = await prisma.prize.findMany({
-    where: {
-      campaignId,
-      active: true,
-      remainingQuantity: { gt: 0 },
-      winProbability: { gt: 0 }
-    },
-    orderBy: { createdAt: 'asc' }
-  });
-
-  if (!prizes.length) {
-    return null;
-  }
-
-  if (guaranteedWin) {
-    const totalWeight = prizes.reduce((sum, prize) => sum + prize.winProbability, 0);
-    const pickFromPool = async (pool: typeof prizes) => {
-      if (!pool.length) return null;
-
-      if (totalWeight <= 0) {
-        const randomIndex = Math.floor(Math.random() * pool.length);
-        return tryClaimPrize(pool[randomIndex].id);
-      }
-
-      let random = Math.random() * totalWeight;
-      for (const prize of pool) {
-        random -= prize.winProbability;
-        if (random <= 0) {
-          const claimed = await tryClaimPrize(prize.id);
-          if (claimed) return claimed;
-          break;
-        }
-      }
-
-      for (const prize of pool) {
-        const claimed = await tryClaimPrize(prize.id);
-        if (claimed) return claimed;
-      }
-
-      return null;
-    };
-
-    return pickFromPool(prizes);
-  }
-
-  const random = Math.random() * 100;
-  let cumulative = 0;
-
-  for (const prize of prizes) {
-    cumulative += prize.winProbability;
-    if (random <= cumulative) {
-      const claimed = await tryClaimPrize(prize.id);
-      if (claimed) return claimed;
-    }
   }
 
   return null;
@@ -896,10 +807,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         normalizedEmail === adminEmail &&
         safeEqual(password, adminPassword)
       ) {
+        const adminToken = signToken({ sub: 'super_admin', role: 'super_admin' });
+        res.setHeader('Set-Cookie', setSessionCookie(adminToken, req));
         return res.json({
           success: true,
           data: {
-            token: signToken({ sub: 'super_admin', role: 'super_admin' }),
+            token: adminToken,
             user: { email: adminEmail, role: 'super_admin' }
           }
         });
@@ -923,15 +836,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
+      const userToken = signToken({
+        sub: user.id,
+        role: user.role,
+        storeId: user.storeId,
+        partnerId: user.partnerId
+      });
+      res.setHeader('Set-Cookie', setSessionCookie(userToken, req));
       return res.json({
         success: true,
         data: {
-          token: signToken({
-            sub: user.id,
-            role: user.role,
-            storeId: user.storeId,
-            partnerId: user.partnerId
-          }),
+          token: userToken,
           user: {
             id: user.id,
             email: user.email,
@@ -942,6 +857,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
       });
+    }
+
+    if (path === '/api/auth/logout' && method === 'POST') {
+      const proto = req.headers?.['x-forwarded-proto'];
+      const isHttps = proto === 'https' || process.env.VERCEL_ENV === 'production';
+      const secureFlag = isHttps ? '; Secure' : '';
+      res.setHeader('Set-Cookie', `gv_session=; Max-Age=0; Path=/api; HttpOnly${secureFlag}; SameSite=Strict`);
+      return res.json({ success: true });
     }
 
     if (path === '/api/auth/register-store' && method === 'POST') {
@@ -1015,15 +938,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return { store, user };
       });
 
+      const storeToken = signToken({
+        sub: created.user.id,
+        role: created.user.role,
+        storeId: created.user.storeId,
+        partnerId: created.user.partnerId
+      });
+      res.setHeader('Set-Cookie', setSessionCookie(storeToken, req));
       return res.status(201).json({
         success: true,
         data: {
-          token: signToken({
-            sub: created.user.id,
-            role: created.user.role,
-            storeId: created.user.storeId,
-            partnerId: created.user.partnerId
-          }),
+          token: storeToken,
           trialDays,
           store: created.store,
           user: {
@@ -1222,90 +1147,72 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const sessionKey = buildSessionKey({
-        campaignId: campaign.id,
-        playLimitMode: campaign.playLimitMode,
+      const playResult = await executePlay({
+        db: prisma as any,
+        campaign: campaign as any,
         email,
         clientIp,
-        deviceKey
-      });
-      const previousPlays = await prisma.participation.count({
-        where: { sessionKey, campaignId: campaign.id }
+        userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+        deviceKey,
+        customerData,
+        signRevealToken: (participationId) =>
+          signToken({ sub: participationId, role: 'reveal' }, 3600)
       });
 
-      if (previousPlays >= 1) {
-        return res.status(429).json({
-          success: false,
-          error: 'Maximum plays reached'
-        });
+      if (playResult.kind === 'campaign_not_found') {
+        return res.status(404).json({ success: false, error: 'Campaign not found' });
       }
-
-      const selectedPrize = await pickInventoryPrize(campaign.id, campaign.guaranteedWin);
-
-      if (campaign.guaranteedWin && !selectedPrize) {
+      if (playResult.kind === 'subscription_expired') {
+        return res.status(403).json({ success: false, error: 'Store subscription expired' });
+      }
+      if (playResult.kind === 'campaign_not_active') {
+        return res.status(400).json({ success: false, error: 'Campaign not active' });
+      }
+      if (playResult.kind === 'duplicate') {
+        return res.status(429).json({ success: false, error: 'Maximum plays reached' });
+      }
+      if (playResult.kind === 'prizes_exhausted') {
         return res.status(410).json({
           success: false,
           error: 'Tutti i premi sono esauriti. Riprova più tardi o contatta il negozio.'
         });
       }
 
-      const expiresAt = new Date(
-        now.getTime() + campaign.voucherValidityDays * 24 * 60 * 60 * 1000
-      );
-
-      const participation = await prisma.participation.create({
-        data: {
-          sessionKey,
-          campaignId: campaign.id,
-          email,
-          clientIp,
-          userAgent: typeof userAgent === 'string' ? userAgent : undefined,
-          deviceKey,
-          customerData,
-          outcome: selectedPrize ? 'won' : 'lost',
-          prizeId: selectedPrize?.id,
-          voucher: selectedPrize
-            ? {
-                create: {
-                  code: generateVoucherCode(),
-                  campaignId: campaign.id,
-                  storeId: campaign.store.id,
-                  prize: {
-                    id: selectedPrize.id,
-                    name: selectedPrize.name,
-                    emoji: selectedPrize.emoji,
-                    description: selectedPrize.description
-                  },
-                  email,
-                  expiresAt
-                }
-              }
-            : undefined
-        },
-        include: { voucher: true }
-      });
-
-      if (selectedPrize) {
+      if (playResult.claimedPrize) {
         await createPrizesExhaustedAlert(campaign.store.id, campaign.id, campaign.name);
       }
 
       return res.json({
         success: true,
-        data: {
-          sessionId: participation.id,
-          won: Boolean(selectedPrize),
-          prize: selectedPrize
-            ? {
-                id: selectedPrize.id,
-                name: selectedPrize.name,
-                emoji: selectedPrize.emoji,
-                description: selectedPrize.description
-              }
-            : null,
-          voucherCode: participation.voucher?.code || null,
-          expiresAt: participation.voucher?.expiresAt.toISOString() || null,
-          loseMessage: campaign.loseMessage
+        data: playResult.responseData
+      });
+    }
+
+    if (path === '/api/public/reveal' && method === 'POST') {
+      const rawToken = typeof req.body?.revealToken === 'string' ? req.body.revealToken : null;
+      const revealPayload = verifyToken(rawToken);
+
+      if (!revealPayload || revealPayload.role !== 'reveal') {
+        return res.status(400).json({ success: false, error: 'Token non valido o scaduto.' });
+      }
+
+      const participationId = revealPayload.sub;
+
+      const participation = await prisma.participation.findUnique({
+        where: { id: participationId },
+        include: {
+          voucher: true,
+          campaign: { select: { loseMessage: true } }
         }
+      });
+
+      if (!participation) {
+        return res.status(404).json({ success: false, error: 'Partecipazione non trovata.' });
+      }
+
+      return res.json({
+        success: true,
+        data: buildRevealPayload(participation as any)
       });
     }
 
@@ -1791,38 +1698,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(400).json({ success: false, errors: validation.error.errors });
         }
 
-        const voucher = await prisma.voucher.findFirst({
-          where: { code: validation.data.code, storeId }
+        const redeemResult = await executeRedeem({
+          db: prisma as any,
+          code: validation.data.code,
+          storeId,
+          userId: currentUser.id,
+          notes: validation.data.notes
         });
 
-        if (!voucher) {
+        if (redeemResult.kind === 'not_found') {
           return res.status(404).json({ success: false, error: 'Voucher not found' });
         }
-
-        if (voucher.redeemed) {
+        if (redeemResult.kind === 'already_redeemed') {
           return res.status(400).json({ success: false, error: 'Voucher already redeemed' });
         }
-
-        if (new Date() > voucher.expiresAt) {
+        if (redeemResult.kind === 'expired') {
           return res.status(400).json({ success: false, error: 'Voucher expired' });
         }
 
-        const redeemed = await prisma.voucher.update({
-          where: { id: voucher.id },
-          data: {
-            redeemed: true,
-            redeemedAt: new Date(),
-            redeemedByUserId: currentUser.id,
-            redemptions: {
-              create: {
-                userId: currentUser.id,
-                notes: validation.data.notes
-              }
-            }
-          }
-        });
-
-        return res.json({ success: true, data: redeemed });
+        return res.json({ success: true, data: redeemResult.voucher });
       }
 
       if (path === '/api/store/alerts' && method === 'GET') {

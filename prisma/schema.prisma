@@ -104,7 +104,7 @@ model Participation {
   createdAt    DateTime @default(now())
   voucher      Voucher?
 
-  @@index([sessionKey, campaignId])
+  @@unique([sessionKey, campaignId])
   @@index([email, campaignId])
 }
 

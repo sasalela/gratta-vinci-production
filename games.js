@@ -219,17 +219,13 @@ window.PromoGames = (() => {
       }
       this.resultLayerCtx.globalAlpha = 1;
 
-      const hiddenText = gameData.won
-        ? `${gameData.prize.emoji || ''} ${gameData.prize.name}`
-        : campaignConfig?.loseMessage || gameData.loseMessage;
-
       this.resultLayerCtx.textAlign = 'center';
       this.resultLayerCtx.fillStyle = primary;
       this.resultLayerCtx.font = '800 15px Arial';
-      this.resultLayerCtx.fillText(gameData.won ? 'HAI VINTO' : 'ESITO GIOCATA', this.resultLayer.width / 2, 72);
+      this.resultLayerCtx.fillText('ESITO IN ARRIVO', this.resultLayer.width / 2, 72);
       this.resultLayerCtx.fillStyle = '#111827';
       this.resultLayerCtx.font = '900 28px Arial';
-      drawCenteredText(this.resultLayerCtx, hiddenText, this.resultLayer.width / 2, 115, this.resultLayer.width - 86, 34, 2);
+      this.resultLayerCtx.fillText('…', this.resultLayer.width / 2, 130);
     }
 
     drawCoverLayer() {
@@ -401,27 +397,9 @@ window.PromoGames = (() => {
     }
 
     getTargetRotation() {
-      const { gameData } = this.context;
       if (!this.segments.length) return 0;
-
       const slice = (Math.PI * 2) / this.segments.length;
-      let targetIndex = this.segments.findIndex((segment) => segment.kind === 'lose');
-
-      if (gameData.won) {
-        targetIndex = this.segments.findIndex((segment) => (
-          segment.kind === 'win' && segment.prizeId && segment.prizeId === gameData.prize?.id
-        ));
-        if (targetIndex < 0) {
-          targetIndex = this.segments.findIndex((segment) => (
-            segment.kind === 'win' && segment.prizeName === gameData.prize?.name
-          ));
-        }
-        if (targetIndex < 0) {
-          targetIndex = this.segments.findIndex((segment) => segment.kind === 'win');
-        }
-      }
-
-      if (targetIndex < 0) targetIndex = 0;
+      const targetIndex = Math.floor(Math.random() * this.segments.length);
       const segmentCenter = targetIndex * slice + slice / 2;
       return Math.PI * 1.5 - segmentCenter;
     }
@@ -638,14 +616,9 @@ window.PromoGames = (() => {
       if (this.opened) return;
       this.opened = true;
 
-      const { gameData, campaignConfig } = this.context;
+      const { campaignConfig } = this.context;
       const guaranteedWin = Boolean(campaignConfig?.guaranteedWin);
-      const text = gameData.won
-        ? `${gameData.prize.emoji || ''} ${gameData.prize.name}`.trim()
-        : campaignConfig?.loseMessage || gameData.loseMessage;
-      const decoyPrizes = (campaignConfig?.prizes || [])
-        .filter((prize) => prize.id !== gameData.prize?.id)
-        .map((prize) => prize.name);
+      const decoyPrizes = (campaignConfig?.prizes || []).map((prize) => prize.name);
       const boxes = [...this.grid.querySelectorAll('.mystery-box')];
 
       boxes.forEach((box, index) => {
@@ -662,8 +635,8 @@ window.PromoGames = (() => {
           if (index === selectedIndex) {
             box.classList.add('opened');
             box.innerHTML = `
-              <span class="mystery-box-top">${gameData.won ? (gameData.prize.emoji || '✨') : '💨'}</span>
-              <span class="mystery-box-label">${gameData.won ? 'Trovato!' : 'Vuota'}</span>
+              <span class="mystery-box-top">✨</span>
+              <span class="mystery-box-label">...</span>
             `;
           } else {
             box.classList.add('opened', 'empty');
@@ -675,16 +648,12 @@ window.PromoGames = (() => {
           }
         });
 
-        if (gameData.won) this.spawnConfetti();
-
         this.revealEl.innerHTML = `
-          <p class="eyebrow">${gameData.won
-            ? (guaranteedWin ? 'Hai vinto questo premio' : 'Hai scelto quella giusta')
-            : 'Esito giocata'}</p>
-          <strong>${text}</strong>
+          <p class="eyebrow">Esito in arrivo…</p>
+          <strong>…</strong>
         `;
         this.revealEl.classList.remove('hidden');
-        setTimeout(() => this.context.onReveal(), gameData.won ? 1200 : 800);
+        setTimeout(() => this.context.onReveal(), 800);
       }, 650);
     }
 

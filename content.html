@@ -8,57 +8,172 @@
 </head>
 <body>
   <main class="page">
+
     <header class="topbar">
       <div>
         <p class="eyebrow">Materiali promozionali</p>
-        <h1>Genera locandine e grafiche schermo</h1>
-        <p id="storeLabel" class="muted">Seleziona una campagna e scarica i formati pronti all’uso.</p>
+        <h1>Genera campagna multi-canale</h1>
+        <p id="storeLabel" class="muted">Seleziona campagna, scegli i canali e scarica.</p>
       </div>
       <div class="actions">
         <a href="/store.html" class="button ghost">Torna al pannello</a>
       </div>
     </header>
 
-    <div id="errorBox" class="message error hidden"></div>
+    <div id="errorBox"   class="message error   hidden"></div>
     <div id="successBox" class="message success hidden"></div>
 
     <section id="contentApp" class="layout hidden">
+
+      <!-- ── SIDEBAR CONTROLS ───────────────────────────────────────── -->
       <aside class="card controls">
-        <h2>Impostazioni</h2>
-        <label for="campaignSelect">Campagna</label>
+
+        <p class="section-label">Campagna</p>
         <select id="campaignSelect"></select>
 
-        <label for="formatSelect">Formato anteprima</label>
-        <select id="formatSelect">
-          <option value="a4">PDF A4 verticale</option>
-          <option value="16x9">Schermo 16:9 orizzontale</option>
-          <option value="4x3">Schermo 4:3 orizzontale</option>
-          <option value="vertical">Schermo verticale 9:16</option>
-          <option value="square">Schermo quadrato</option>
-        </select>
-
+        <p class="section-label">Testi</p>
         <label for="headlineInput">Titolo principale</label>
         <input id="headlineInput" type="text" value="Inquadra e vinci">
 
-        <label for="subtitleInput">Testo promozionale</label>
-        <textarea id="subtitleInput" rows="3">Partecipa al gioco promozionale e scopri subito se hai vinto.</textarea>
+        <label for="subtitleInput">Sottotitolo / descrizione</label>
+        <textarea id="subtitleInput" rows="2">Partecipa e scopri subito il tuo premio.</textarea>
 
         <label for="ctaInput">Call to action</label>
-        <input id="ctaInput" type="text" value="Inquadra il QR code">
-
-        <button id="renderBtn" type="button" class="primary">Aggiorna anteprima</button>
+        <input id="ctaInput" type="text" value="Gioca ora">
 
         <hr>
 
-        <h3>Download</h3>
-        <button id="downloadPdfBtn" type="button">PDF A4 verticale</button>
-        <button id="download16x9Btn" type="button">PNG 16:9</button>
-        <button id="download4x3Btn" type="button">PNG 4:3</button>
-        <button id="downloadVerticalBtn" type="button">PNG verticale</button>
-        <button id="downloadSquareBtn" type="button">PNG quadrato</button>
-        <button id="downloadQrBtn" type="button" class="secondary">QR separato</button>
+        <!-- ── Channel selection ─────────────────────────── -->
+        <p class="section-label">Canali</p>
+        <p class="hint">Seleziona i materiali da generare poi clicca Scarica.</p>
+
+        <div class="channel-group">
+          <label class="channel-head">
+            <input type="checkbox" id="ch_print">
+            <span>Stampa</span>
+          </label>
+          <div class="channel-formats">
+            <label><input type="checkbox" data-format="a4"> PDF A4 Volantino</label>
+          </div>
+        </div>
+
+        <div class="channel-group">
+          <label class="channel-head">
+            <input type="checkbox" id="ch_social">
+            <span>Social Media</span>
+          </label>
+          <div class="channel-formats">
+            <label><input type="checkbox" data-format="facebook"> Facebook Feed (1200×630)</label>
+            <label><input type="checkbox" data-format="square"> Quadrato Feed (1080×1080)</label>
+            <label><input type="checkbox" data-format="story"> Stories — 5 frame (9:16)</label>
+          </div>
+        </div>
+
+        <div class="channel-group">
+          <label class="channel-head">
+            <input type="checkbox" id="ch_led">
+            <span>Schermi LED</span>
+          </label>
+          <div class="channel-formats">
+            <label><input type="checkbox" data-format="led_h"> Orizzontale (1920×576)</label>
+            <label><input type="checkbox" data-format="led_v"> Verticale (576×1024)</label>
+            <label><input type="checkbox" data-format="led_sq"> Quadrato (800×800)</label>
+          </div>
+        </div>
+
+        <div class="channel-group">
+          <label class="channel-head">
+            <input type="checkbox" id="ch_lcd">
+            <span>Schermi LCD</span>
+          </label>
+          <div class="channel-formats">
+            <label><input type="checkbox" data-format="16x9"> 16:9 orizzontale (1920×1080)</label>
+            <label><input type="checkbox" data-format="4x3"> 4:3 orizzontale (1600×1200)</label>
+            <label><input type="checkbox" data-format="lcd_v"> Verticale (1080×1920)</label>
+          </div>
+        </div>
+
+        <button id="downloadSelectedBtn" type="button" class="primary btn-download-all">
+          ↓ Scarica canali selezionati
+        </button>
+
+        <hr>
+
+        <!-- ── Preview selector ──────────────────────────── -->
+        <p class="section-label">Anteprima</p>
+        <label for="formatPreviewSelect">Formato da visualizzare</label>
+        <select id="formatPreviewSelect">
+          <optgroup label="Stampa">
+            <option value="a4">A4 Volantino</option>
+          </optgroup>
+          <optgroup label="Social">
+            <option value="facebook">Facebook Feed</option>
+            <option value="square">Quadrato Feed</option>
+            <option value="vertical">9:16 Social post</option>
+            <option value="story">Story (sequenza 5 frame)</option>
+          </optgroup>
+          <optgroup label="LED">
+            <option value="led_h">LED orizzontale</option>
+            <option value="led_v">LED verticale</option>
+            <option value="led_sq">LED quadrato</option>
+          </optgroup>
+          <optgroup label="LCD">
+            <option value="16x9">LCD 16:9</option>
+            <option value="4x3">LCD 4:3</option>
+            <option value="lcd_v">LCD verticale</option>
+          </optgroup>
+        </select>
+
+        <!-- concept selector (shown only for A4 print preview) -->
+        <div id="printConceptRow" class="hidden">
+          <label for="printConceptSelect">Concept volantino A4</label>
+          <select id="printConceptSelect">
+            <option value="D" selected>D — Festa / Sagra (consigliato)</option>
+            <option value="A">A — Vincita immediata</option>
+            <option value="B">B — Tenta la fortuna</option>
+            <option value="C">C — Premi limitati (scarsità)</option>
+          </select>
+        </div>
+
+        <!-- story frame navigation (shown only for story preview) -->
+        <div id="storyNav" class="story-nav hidden">
+          <button type="button" id="storyPrevBtn">←</button>
+          <span id="storyFrameLabel">1 — Hook · Apertura</span>
+          <button type="button" id="storyNextBtn">→</button>
+        </div>
+
+        <button id="renderBtn" type="button">Aggiorna anteprima</button>
+
+        <hr>
+
+        <!-- ── Individual downloads ──────────────────────── -->
+        <p class="section-label">Download singoli</p>
+
+        <p class="hint">Stampa</p>
+        <button id="downloadPdfBtn" type="button">PDF A4</button>
+
+        <p class="hint">Social</p>
+        <button id="downloadFacebookBtn" type="button">Facebook Feed</button>
+        <button id="downloadSquareBtn"   type="button">Quadrato Feed</button>
+        <button id="downloadVerticalBtn" type="button">9:16 Social post</button>
+        <button id="downloadStoryBtn"    type="button">Story (tutti i 5 frame)</button>
+
+        <p class="hint">LED</p>
+        <button id="downloadLedHBtn"  type="button">LED orizzontale</button>
+        <button id="downloadLedVBtn"  type="button">LED verticale</button>
+        <button id="downloadLedSqBtn" type="button">LED quadrato</button>
+
+        <p class="hint">LCD</p>
+        <button id="download16x9Btn" type="button">LCD 16:9</button>
+        <button id="download4x3Btn"  type="button">LCD 4:3</button>
+        <button id="downloadLcdVBtn" type="button">LCD verticale</button>
+
+        <p class="hint">QR code</p>
+        <button id="downloadQrBtn" type="button" class="secondary">QR separato SVG</button>
+
       </aside>
 
+      <!-- ── PREVIEW PANEL ─────────────────────────────────────────── -->
       <section class="preview-panel">
         <div class="preview-toolbar">
           <div>
@@ -70,13 +185,16 @@
           <canvas id="promoCanvas"></canvas>
         </div>
       </section>
+
     </section>
 
+    <!-- ── LOGIN HINT ───────────────────────────────────────────────── -->
     <section id="loginHint" class="card hidden">
       <h2>Accesso richiesto</h2>
       <p>Entra prima nel pannello negozio, poi torna qui per generare i materiali.</p>
       <a href="/store.html" class="button primary">Vai al login negozio</a>
     </section>
+
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>

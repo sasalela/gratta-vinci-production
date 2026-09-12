@@ -1,0 +1,15 @@
+---
+description: Regole schema e dati
+alwaysApply: true
+---
+
+Lo schema deve restare semplice e coerente.
+Non mostrare campi tecnici all’utente se non servono.
+Genera automaticamente slug e identificativi interni.
+Il negoziante non deve vedere slug, chiavi tecniche o nomi database.
+I dati multi-tenant devono restare separati.
+Qualsiasi campo di configurazione deve essere leggibile da utenti non tecnici.
+Le scelte di premi, frequenze e dati giocatore devono essere espresse in linguaggio umano.
+
+
+---
