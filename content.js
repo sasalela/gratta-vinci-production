@@ -1420,147 +1420,163 @@ function renderFacebook(ctx, canvas, qrImage, data) {
 
 // ─── SOCIAL renderer (9:16 + square) ─────────────────────────────────────────
 
+// Hand-drawn style curved arrow pointing from (x1,y1) to (x2,y2)
+function drawCurvedArrow(ctx, x1, y1, x2, y2, color, lw) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
+  const cpx = x1 - (y2 - y1) * 0.5, cpy = (y1 + y2) / 2;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cpx, cpy, x2, y2); ctx.stroke();
+  const ang = Math.atan2(y2 - cpy, x2 - cpx);
+  const ah = lw * 3.4;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - ah * Math.cos(ang - 0.45), y2 - ah * Math.sin(ang - 0.45));
+  ctx.lineTo(x2 - ah * Math.cos(ang + 0.45), y2 - ah * Math.sin(ang + 0.45));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// Luminance check for text-on-band contrast
+function isLightHex(hex) {
+  const h = (hex || '#888').replace('#', '');
+  if (h.length < 6) return false;
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 155;
+}
+
+// Reference-style dark background with accent glow
+function drawSocialBg(ctx, W, H, primary, secondary) {
+  const cx = W / 2;
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(cx, H * 0.26, W * 0.04, cx, H * 0.32, W * 0.82);
+  glow.addColorStop(0, hexToRgba(secondary, 0.62));
+  glow.addColorStop(0.38, hexToRgba(primary, 0.38));
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  const edge = ctx.createLinearGradient(0, 0, 0, H);
+  edge.addColorStop(0, 'rgba(0,0,0,0.35)'); edge.addColorStop(0.55, 'rgba(0,0,0,0)');
+  edge.addColorStop(1, 'rgba(0,0,0,0.42)');
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function socialAccent(secondary) {
+  return isLightHex(secondary) ? secondary : FESTA.yellow;
+}
+
+function socialBandInk(accent) {
+  return isLightHex(accent) ? FESTA.navy : '#ffffff';
+}
+
+function socialEyebrow(headline) {
+  const h = (headline || '').trim();
+  return (h && h.toLowerCase() !== 'inquadra e vinci') ? h.toUpperCase() : 'POTRESTI AVER VINTO';
+}
+function socialCtaText(cta) {
+  const c = (cta || '').trim();
+  return (c && c.toLowerCase() !== 'gioca ora') ? c.toUpperCase() : 'SCANSIONA E GIOCA';
+}
+
 function renderSocial(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
   const isSquare = W === H;
-  const { primary, secondary, headline, cta, prizeText,
-    storeName, campaignName, expiresText, logoImage } = data;
+  const { primary, secondary, headline, cta, prizeText, storeName, expiresText } = data;
   const cx = W / 2;
+  const prize   = (stripEmoji(prizeText) || 'UN PREMIO').toUpperCase();
+  const eyebrow = socialEyebrow(headline);
+  const ctaText = socialCtaText(cta);
+  const accent  = socialAccent(secondary);
+  const ink     = socialBandInk(accent);
+  const plines  = festaPrizeLines(prize);
+  const burstLen = Math.round(W * 0.038);
 
-  // Full-bleed diagonal gradient
-  const bg = ctx.createLinearGradient(0, 0, W * 0.4, H);
-  bg.addColorStop(0, primary);
-  bg.addColorStop(0.6, secondary);
-  bg.addColorStop(1, primary);
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
+  drawSocialBg(ctx, W, H, primary, secondary);
 
-  ctx.fillStyle = 'rgba(255,255,255,0.05)';
-  [[0.88, 0.06, 210], [0.06, 0.44, 250], [0.9, 0.65, 180], [0.1, 0.96, 210]].forEach(([rx, ry, r]) => {
-    ctx.beginPath(); ctx.arc(W * rx, H * ry, r, 0, Math.PI * 2); ctx.fill();
+  // ── Store name: "— NOME —" ──
+  let y = Math.round(H * (isSquare ? 0.042 : 0.038));
+  const snLabel = '— ' + storeName.toUpperCase() + ' —';
+  let snSz = Math.round(W * (isSquare ? 0.038 : 0.04));
+  do { ctx.font = `700 ${snSz}px ${FONT}`; if (ctx.measureText(snLabel).width <= W * 0.92) break; snSz -= 2; } while (snSz > 22);
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(snLabel, cx, y);
+  y += Math.round(snSz * (isSquare ? 1.65 : 1.75));
+
+  // ── Eyebrow hook ──
+  const ebSz = Math.round(W * (isSquare ? 0.058 : 0.072));
+  ctx.font = `900 ${ebSz}px ${FONT}`; ctx.fillStyle = '#ffffff';
+  const ebLines = wrapTextLines(ctx, eyebrow, W * 0.9);
+  ebLines.slice(0, 2).forEach((line, i) => ctx.fillText(line, cx, y + Math.round(ebSz * 1.08 * i)));
+  y += Math.round(ebSz * (ebLines.length > 1 ? 2.2 : 1.15) + H * (isSquare ? 0.018 : 0.024));
+
+  // ── Prize hero — accent brush band + yellow bursts ──
+  let lineSz = Math.round(W * (isSquare ? (plines.length >= 3 ? 0.088 : 0.102) : 0.112));
+  const lineH = Math.round(lineSz * 1.08);
+  const bandPadY = Math.round(H * 0.014);
+  const bandH = lineH * plines.length + bandPadY * 2;
+  const bandW = Math.round(W * 0.92);
+  drawBrushBand(ctx, cx - bandW / 2, y, bandW, bandH, accent);
+  drawBurst(ctx, cx - bandW / 2 - W * 0.022, y + bandH / 2, burstLen, FESTA.yellow);
+  drawBurst(ctx, cx + bandW / 2 + W * 0.022, y + bandH / 2, burstLen, FESTA.yellow);
+  plines.forEach((line, i) => {
+    drawFestaLine(ctx, line, cx, y + bandPadY + lineH * i + lineH / 2, bandW * 0.86, lineSz, ink);
   });
-  ctx.fillStyle = 'rgba(255,255,255,0.028)';
-  ctx.beginPath(); ctx.arc(cx, H * 0.5, W * 0.6, 0, Math.PI * 2); ctx.fill();
+  y += bandH + Math.round(H * (isSquare ? 0.022 : 0.028));
 
-  if (isSquare) {
-    const lSz = Math.round(W * 0.13);
-    let y = Math.round(H * 0.06);
-    ctx.beginPath(); ctx.arc(cx, y + lSz / 2, lSz / 2 + 14, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fill();
-    drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, lSz / 2);
-    y += lSz + 12;
-    ctx.font = `600 22px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  // ── "Scoprilo ora" + yellow arrow (vertical) ──
+  if (!isSquare) {
+    ctx.font = `800 ${Math.round(W * 0.048)}px ${FONT}`; ctx.fillStyle = '#ffffff';
+    ctx.fillText('SCOPRILO ORA', cx + W * 0.04, y);
+    drawCurvedArrow(ctx, cx - W * 0.15, y + W * 0.018, cx - W * 0.02, y + W * 0.065,
+      FESTA.yellow, Math.round(W * 0.012));
+    y += Math.round(H * 0.048);
+  }
+
+  // ── Bottom stack: CTA band + esito + expiry ──
+  const ctaBandH = Math.round(W * (isSquare ? 0.105 : 0.108));
+  const esitoH   = isSquare ? 0 : Math.round(H * 0.048);
+  const expH     = expiresText ? Math.round(H * 0.042) : Math.round(H * 0.02);
+  const bottomPad = Math.round(H * 0.028);
+  const ctaBandY = H - bottomPad - expH - esitoH - ctaBandH;
+
+  // ── QR — large white card + yellow bursts ──
+  const qrPad = Math.round(W * 0.034);
+  const zoneTop = y;
+  const zoneBot = ctaBandY - Math.round(H * 0.02);
+  const qrMax  = Math.max(0, zoneBot - zoneTop - qrPad * 2);
+  const qrSz   = Math.round(Math.min(W * (isSquare ? 0.44 : 0.48), qrMax));
+  const cardWH = qrSz + qrPad * 2;
+  const qrCardY = zoneTop + Math.max(0, Math.floor((zoneBot - zoneTop - cardWH) / 2));
+  roundedRect(ctx, cx - cardWH / 2, qrCardY, cardWH, cardWH, Math.round(W * 0.028));
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.drawImage(qrImage, cx - qrSz / 2, qrCardY + qrPad, qrSz, qrSz);
+  drawBurst(ctx, cx - cardWH / 2 - W * 0.028, qrCardY + cardWH / 2, burstLen, FESTA.yellow);
+  drawBurst(ctx, cx + cardWH / 2 + W * 0.028, qrCardY + cardWH / 2, burstLen, FESTA.yellow);
+
+  // ── CTA on accent brush band (reference — not white pill) ──
+  const ctaBandW = Math.round(W * 0.88);
+  drawBrushBand(ctx, cx - ctaBandW / 2, ctaBandY, ctaBandW, ctaBandH, accent);
+  let ctaSz = Math.round(ctaBandH * 0.38);
+  do {
+    ctx.font = `900 ${ctaSz}px ${FONT}`;
+    if (ctx.measureText(ctaText).width <= ctaBandW * 0.88) break;
+    ctaSz -= 2;
+  } while (ctaSz > Math.round(W * 0.038));
+  ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(ctaText, cx, ctaBandY + ctaBandH / 2);
+  ctx.textBaseline = 'alphabetic';
+
+  if (!isSquare) {
+    ctx.font = `800 ${Math.round(W * 0.034)}px ${FONT}`; ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(storeName.length > 20 ? storeName.slice(0, 19) + '…' : storeName, cx, y);
-    y += 34;
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(W * 0.2, y); ctx.lineTo(W * 0.8, y); ctx.stroke();
-    y += Math.round(H * 0.038);
-
-    if (campaignName) {
-      const ewText = campaignName.length > 22 ? campaignName.slice(0, 21) + '…' : campaignName;
-      ctx.font = `700 ${Math.round(W * 0.032)}px ${FONT}`;
-      const ewW = Math.min(ctx.measureText(ewText).width + 36, W * 0.76);
-      const ewH = Math.round(W * 0.042);
-      roundedRect(ctx, cx - ewW / 2, y, ewW, ewH, ewH / 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(ewText, cx, y + ewH / 2);
-      y += ewH + Math.round(H * 0.025); ctx.textBaseline = 'top';
-    }
-
-    y = drawTextBlock(ctx, {
-      text: headline, x: cx, y, maxWidth: W * 0.84, maxHeight: Math.round(H * 0.24),
-      startSize: Math.round(W * 0.1), minSize: 48, weight: 900, color: '#ffffff', maxLines: 2, lineRatio: 1.08
-    });
-    y += Math.round(H * 0.022);
-
-    if (prizeText) {
-      ctx.font = `800 ${Math.round(W * 0.042)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.94)';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(prizeText.length > 22 ? prizeText.slice(0, 21) + '…' : prizeText, cx, y);
-      y += Math.round(W * 0.058);
-    }
-
-    const qrSz = Math.round(W * 0.24), qrPad = Math.round(W * 0.038), ctaH = Math.round(W * 0.05);
-    const qrCardH = qrPad + qrSz + qrPad * 0.55 + ctaH + qrPad * 0.7;
-    const qrCardW = qrSz + qrPad * 3.4;
-    const qrCardY = H - Math.round(H * 0.066) - qrCardH;
-    roundedRect(ctx, cx - qrCardW / 2, qrCardY, qrCardW, qrCardH, Math.round(W * 0.04));
-    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill();
-    ctx.drawImage(qrImage, cx - qrSz / 2, qrCardY + qrPad, qrSz, qrSz);
-    ctx.font = `900 ${Math.round(W * 0.034)}px ${FONT}`; ctx.fillStyle = primary;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(cta, cx, qrCardY + qrPad + qrSz + Math.round(qrPad * 0.46));
+    ctx.fillText('ESITO IMMEDIATO', cx, ctaBandY + ctaBandH + Math.round(H * 0.014));
+  }
+  if (expiresText) {
+    ctx.font = `500 ${Math.round(W * 0.024)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText(expiresText, cx, H - Math.round(H * 0.018));
     ctx.textBaseline = 'alphabetic';
-
-  } else {
-    // VERTICAL 9:16
-    let y = Math.round(H * 0.062);
-    const lSz = Math.round(W * 0.14);
-    ctx.beginPath(); ctx.arc(cx, y + lSz / 2, lSz / 2 + 12, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fill();
-    drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, lSz / 2);
-    y += lSz + 14;
-    ctx.font = `600 24px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(storeName.length > 22 ? storeName.slice(0, 21) + '…' : storeName, cx, y);
-    y += 36;
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(W * 0.22, y); ctx.lineTo(W * 0.78, y); ctx.stroke();
-    y += Math.round(H * 0.038);
-
-    if (campaignName) {
-      const ewText = campaignName.length > 26 ? campaignName.slice(0, 25) + '…' : campaignName;
-      ctx.font = `700 ${Math.round(W * 0.034)}px ${FONT}`;
-      const ewW = Math.min(ctx.measureText(ewText).width + 40, W * 0.78);
-      const ewH = Math.round(W * 0.048);
-      roundedRect(ctx, cx - ewW / 2, y, ewW, ewH, ewH / 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.16)'; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.32)'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(ewText, cx, y + ewH / 2);
-      y += ewH + Math.round(H * 0.024); ctx.textBaseline = 'top';
-    }
-
-    y = drawTextBlock(ctx, {
-      text: headline, x: cx, y, maxWidth: W * 0.84, maxHeight: Math.round(H * 0.22),
-      startSize: Math.round(W * 0.113), minSize: 52, weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.08
-    });
-    y += Math.round(H * 0.024);
-
-    if (prizeText) {
-      ctx.font = `800 ${Math.round(W * 0.042)}px ${FONT}`;
-      const pW = Math.min(ctx.measureText(prizeText).width + 58, W * 0.84);
-      const pH = Math.round(W * 0.078);
-      roundedRect(ctx, cx - pW / 2, y, pW, pH, pH / 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.44)'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(prizeText, cx, y + pH / 2);
-      ctx.textBaseline = 'alphabetic';
-      y += pH + 10;
-    }
-
-    const qrSz = Math.round(W * 0.28), qrPad = Math.round(W * 0.05), ctaH = Math.round(W * 0.05);
-    const qrCardW = W * 0.72;
-    const qrCardH = qrPad + qrSz + Math.round(qrPad * 0.48) + ctaH + qrPad;
-    const qrCardY = H - Math.round(H * 0.052) - qrCardH;
-    roundedRect(ctx, cx - qrCardW / 2, qrCardY, qrCardW, qrCardH, Math.round(W * 0.04));
-    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill();
-    ctx.drawImage(qrImage, cx - qrSz / 2, qrCardY + qrPad, qrSz, qrSz);
-    ctx.font = `900 ${Math.round(W * 0.038)}px ${FONT}`; ctx.fillStyle = primary;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(cta, cx, qrCardY + qrPad + qrSz + Math.round(qrPad * 0.42));
-    ctx.textBaseline = 'alphabetic';
-
-    if (expiresText) {
-      ctx.font = `400 ${Math.round(W * 0.018)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.52)';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      ctx.fillText(expiresText, cx, H - Math.round(H * 0.018));
-      ctx.textBaseline = 'alphabetic';
-    }
   }
 }
 
@@ -1802,47 +1818,58 @@ function renderStoryQr(ctx, canvas, qrImage, data) {
   bg.addColorStop(0, hexToRgba(primary, 0.06)); bg.addColorStop(1, hexToRgba(secondary, 0.03));
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-  const tbH = Math.round(H * 0.008);
   const tbG = ctx.createLinearGradient(0, 0, W, 0);
   tbG.addColorStop(0, primary); tbG.addColorStop(1, secondary);
-  ctx.fillStyle = tbG; ctx.fillRect(0, 0, W, tbH);
+  ctx.fillStyle = tbG; ctx.fillRect(0, 0, W, Math.round(H * 0.008));
 
-  // Logo + store
-  const lSz = Math.round(W * 0.18);
-  let y = Math.round(H * 0.06);
+  // Bottom-anchored stack: dots → expiry → CTA (never overlaps QR)
+  const dotR  = Math.round(W * 0.015);
+  const dotsY = H - Math.round(H * 0.028) - dotR;
+  const expH  = expiresText ? Math.round(H * 0.034) : 0;
+  const btnH  = Math.round(W * 0.09);
+  const btnY  = dotsY - dotR * 2 - Math.round(H * 0.014) - expH - btnH;
+  const qrPad = Math.round(W * 0.034);
+  const gap   = Math.round(H * 0.024);
+
+  // Header — compact so QR stays large
+  const lSz = Math.round(W * 0.14);
+  let y = Math.round(H * 0.045);
   drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, lSz / 2);
-  y += lSz + 14;
+  y += lSz + 10;
 
-  ctx.font = `700 ${Math.round(W * 0.052)}px ${FONT}`; ctx.fillStyle = primary;
+  let snSz = Math.round(W * 0.048);
+  do { ctx.font = `700 ${snSz}px ${FONT}`; if (ctx.measureText(storeName).width <= W * 0.88) break; snSz -= 2; } while (snSz > 24);
+  ctx.font = `700 ${snSz}px ${FONT}`; ctx.fillStyle = primary;
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(storeName.length > 22 ? storeName.slice(0, 21) + '…' : storeName, cx, y);
-  y += Math.round(W * 0.072);
+  ctx.fillText(storeName, cx, y);
+  y += Math.round(snSz * 1.35);
 
   ctx.strokeStyle = hexToRgba(primary, 0.22); ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(W * 0.12, y); ctx.lineTo(W * 0.88, y); ctx.stroke();
-  y += Math.round(H * 0.038);
+  y += Math.round(H * 0.028);
 
-  // Heading
-  ctx.font = `900 ${Math.round(W * 0.068)}px ${FONT}`; ctx.fillStyle = '#0f172a';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const labelSz = Math.round(W * 0.062);
+  ctx.font = `900 ${labelSz}px ${FONT}`; ctx.fillStyle = '#0f172a';
   ctx.fillText('Scansiona e partecipa', cx, y);
-  y += Math.round(W * 0.098);
+  y += Math.round(labelSz * 1.2) + gap;
 
-  // Large QR
-  const qrSz  = Math.round(W * 0.65);
-  const qrPad = Math.round(W * 0.04);
-  roundedRect(ctx, cx - qrSz / 2 - qrPad, y - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, Math.round(W * 0.035));
+  // QR — sized to fit between header and CTA, card top explicit (no y-pad overlap)
+  const zoneTop = y;
+  const zoneBot = btnY - gap;
+  const qrMax = Math.max(0, zoneBot - zoneTop - qrPad * 2);
+  const qrSz  = Math.round(Math.min(W * 0.58, qrMax));
+  const cardTop = zoneTop + Math.max(0, Math.floor((zoneBot - zoneTop - qrSz - qrPad * 2) / 2));
+  roundedRect(ctx, cx - qrSz / 2 - qrPad, cardTop, qrSz + qrPad * 2, qrSz + qrPad * 2, Math.round(W * 0.035));
   ctx.fillStyle = '#f8fafc'; ctx.fill();
   ctx.strokeStyle = hexToRgba(primary, 0.15); ctx.lineWidth = 2; ctx.stroke();
-  ctx.drawImage(qrImage, cx - qrSz / 2, y, qrSz, qrSz);
-  y += qrSz + qrPad * 2 + 18;
+  ctx.drawImage(qrImage, cx - qrSz / 2, cardTop + qrPad, qrSz, qrSz);
 
-  drawCtaButton(ctx, cta, cx, y, W * 0.76, Math.round(W * 0.095), primary, secondary);
+  drawCtaButton(ctx, cta, cx, btnY, W * 0.76, btnH, primary, secondary);
 
   if (expiresText) {
-    ctx.font = `400 ${Math.round(W * 0.034)}px ${FONT}`; ctx.fillStyle = '#94a3b8';
+    ctx.font = `400 ${Math.round(W * 0.032)}px ${FONT}`; ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText(expiresText, cx, H - Math.round(H * 0.025));
+    ctx.fillText(expiresText, cx, dotsY - dotR - Math.round(H * 0.018));
     ctx.textBaseline = 'alphabetic';
   }
 
@@ -1887,10 +1914,11 @@ function renderLed(ctx, canvas, qrImage, data) {
 
 function renderLedHoriz(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
-  const { primary, secondary, headline, cta, prizeText, storeName, logoImage } = data;
+  const { primary, secondary, headline, cta, prizeText, storeName, expiresText, logoImage } = data;
+  const prize = stripEmoji(prizeText);
 
   const topBarH = Math.round(H * 0.076);
-  const botBarH = Math.round(H * 0.05);
+  const botBarH = Math.round(H * 0.06);
   const mainH   = H - topBarH - botBarH;
   const leftW   = Math.round(W * 0.218);
   const rightW  = Math.round(W * 0.26);
@@ -1906,61 +1934,77 @@ function renderLedHoriz(ctx, canvas, qrImage, data) {
   ctx.fillStyle = topG; ctx.fillRect(0, 0, W, topBarH);
   ctx.fillStyle = hexToRgba(primary, 0.28); ctx.fillRect(0, H - botBarH, W, botBarH);
 
+  // Left brand panel — logo + store name (bigger, full white)
   const leftG = ctx.createLinearGradient(0, topBarH, leftW, topBarH + mainH);
   leftG.addColorStop(0, hexToRgba(primary, 0.24)); leftG.addColorStop(1, hexToRgba(secondary, 0.14));
   ctx.fillStyle = leftG; ctx.fillRect(0, topBarH, leftW, mainH);
   ctx.fillStyle = hexToRgba(primary, 0.5); ctx.fillRect(leftW - 3, topBarH, 3, mainH);
 
-  const lSz = Math.round(mainH * 0.46);
-  const snH = Math.round(H * 0.056);
-  const lY  = topBarH + (mainH - lSz - snH - 10) / 2;
+  const lSz = Math.round(mainH * 0.44);
+  const snH = Math.round(H * 0.066);
+  const lY  = topBarH + (mainH - lSz - snH - 12) / 2;
   drawLogo(ctx, logoImage, (leftW - lSz) / 2, lY, lSz, primary, 12);
-  ctx.font = `600 ${snH}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(storeName.length > 16 ? storeName.slice(0, 15) + '…' : storeName, leftW / 2, lY + lSz + 10);
+  let snSz = snH;
+  do { ctx.font = `700 ${snSz}px ${FONT}`; if (ctx.measureText(storeName).width <= leftW * 0.9) break; snSz -= 2; } while (snSz > Math.round(H * 0.04));
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(storeName, leftW / 2, lY + lSz + 12);
 
+  // Center — PRIZE is the hero, headline only a small eyebrow above
   const ctxCx = leftW + centerW / 2;
   const cG = ctx.createLinearGradient(leftW, 0, leftW + centerW, 0);
   cG.addColorStop(0, hexToRgba(secondary, 0.04)); cG.addColorStop(1, hexToRgba(primary, 0.03));
   ctx.fillStyle = cG; ctx.fillRect(leftW, topBarH, centerW, mainH);
 
+  const heroText = (prize || headline).toUpperCase();
+  let cy = topBarH + Math.round(mainH * 0.15);
+  if (prize && headline) {
+    ctx.font = `800 ${Math.round(H * 0.05)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.72)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const eb = headline.toUpperCase();
+    ctx.fillText(eb.length > 34 ? eb.slice(0, 33) + '…' : eb, ctxCx, cy);
+    cy += Math.round(H * 0.078);
+  }
   drawTextBlock(ctx, {
-    text: headline, x: ctxCx, y: topBarH + Math.round(mainH * 0.1),
-    maxWidth: centerW * 0.9, maxHeight: Math.round(mainH * (prizeText ? 0.56 : 0.74)),
-    startSize: Math.round(H * 0.24), minSize: Math.round(H * 0.14),
-    weight: 900, color: '#ffffff', maxLines: 2, lineRatio: 1.06
+    text: heroText, x: ctxCx, y: cy,
+    maxWidth: centerW * 0.94, maxHeight: topBarH + mainH - cy - Math.round(mainH * 0.06),
+    startSize: Math.round(H * 0.25), minSize: Math.round(H * 0.11),
+    weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.03
   });
 
-  if (prizeText) {
-    ctx.font = `700 ${Math.round(H * 0.076)}px ${FONT}`; ctx.fillStyle = secondary;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText(prizeText.length > 30 ? prizeText.slice(0, 29) + '…' : prizeText, ctxCx, H - botBarH - Math.round(H * 0.04));
-    ctx.textBaseline = 'alphabetic';
-  }
-
+  // Right panel — large QR + strong CTA
   const rPanelX = W - rightW;
   ctx.fillStyle = 'rgba(255,255,255,0.034)'; ctx.fillRect(rPanelX, topBarH, rightW, mainH);
   ctx.fillStyle = hexToRgba(primary, 0.3); ctx.fillRect(rPanelX, topBarH, 3, mainH);
 
   const qrZoneCx  = rPanelX + rightW / 2;
-  const ctaFontSz = Math.round(H * 0.086);
-  const qrSz      = Math.round(mainH * 0.65);
+  const ctaFontSz = Math.round(H * 0.092);
+  const qrSz      = Math.round(mainH * 0.66);
   const qrPad     = Math.round(H * 0.028);
   const qrX       = qrZoneCx - qrSz / 2;
-  const qrY       = topBarH + (mainH - (qrSz + qrPad * 2 + ctaFontSz * 1.35)) / 2;
+  const qrY       = topBarH + (mainH - (qrSz + qrPad * 2 + ctaFontSz * 1.3)) / 2;
   roundedRect(ctx, qrX - qrPad, qrY - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 14);
   ctx.fillStyle = '#ffffff'; ctx.fill();
   ctx.drawImage(qrImage, qrX, qrY, qrSz, qrSz);
-  ctx.font = `900 ${ctaFontSz}px ${FONT}`; ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  let ctaSz = ctaFontSz;
+  do { ctx.font = `900 ${ctaSz}px ${FONT}`; if (ctx.measureText(cta).width <= rightW * 0.94) break; ctaSz -= 2; } while (ctaSz > Math.round(H * 0.05));
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText(cta, qrZoneCx, qrY + qrSz + qrPad + 6);
   ctx.textBaseline = 'alphabetic';
+
+  // Expiry — minimal priority, in the bottom bar
+  if (expiresText) {
+    ctx.font = `600 ${Math.round(H * 0.032)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.62)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(expiresText, ctxCx, H - botBarH / 2);
+    ctx.textBaseline = 'alphabetic';
+  }
 }
 
 function renderLedVert(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
-  const { primary, secondary, headline, cta, prizeText, storeName, logoImage } = data;
+  const { primary, secondary, headline, cta, prizeText, storeName, expiresText, logoImage } = data;
   const cx = W / 2;
+  const prize = stripEmoji(prizeText);
 
   ctx.fillStyle = '#080d18'; ctx.fillRect(0, 0, W, H);
   const bg = ctx.createLinearGradient(0, 0, W, H);
@@ -1968,55 +2012,68 @@ function renderLedVert(ctx, canvas, qrImage, data) {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = primary; ctx.fillRect(0, 0, 7, H);
 
-  const tBarH = Math.round(H * 0.04);
+  const tBarH = Math.round(H * 0.035);
   const tBarG = ctx.createLinearGradient(0, 0, W, 0);
   tBarG.addColorStop(0, primary); tBarG.addColorStop(1, secondary);
   ctx.fillStyle = tBarG; ctx.fillRect(0, 0, W, tBarH);
 
-  let y = tBarH + Math.round(H * 0.04);
-  const lSz = Math.round(W * 0.4);
+  let y = tBarH + Math.round(H * 0.03);
+  const lSz = Math.round(W * 0.3);
   drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, 14);
-  y += lSz + 14;
+  y += lSz + 12;
 
-  ctx.font = `600 ${Math.round(W * 0.056)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.92);
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(storeName.length > 16 ? storeName.slice(0, 15) + '…' : storeName, cx, y);
-  y += Math.round(W * 0.072);
+  // Store name — bigger, full white, fit to width (no truncation)
+  let vSnSz = Math.round(W * 0.07);
+  do { ctx.font = `800 ${vSnSz}px ${FONT}`; if (ctx.measureText(storeName).width <= W * 0.86) break; vSnSz -= 2; } while (vSnSz > Math.round(W * 0.045));
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(storeName, cx, y);
+  y += Math.round(vSnSz * 1.35);
 
   ctx.strokeStyle = primary; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(W * 0.16, y); ctx.lineTo(W * 0.84, y); ctx.stroke();
-  y += 22;
+  y += 16;
+
+  // Eyebrow (headline) small, then PRIZE hero
+  if (prize && headline) {
+    ctx.font = `700 ${Math.round(W * 0.05)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.66)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const eb = headline.toUpperCase();
+    ctx.fillText(eb.length > 22 ? eb.slice(0, 21) + '…' : eb, cx, y);
+    y += Math.round(W * 0.076);
+  }
 
   y = drawTextBlock(ctx, {
-    text: headline, x: cx, y, maxWidth: W * 0.86, maxHeight: Math.round(H * 0.22),
-    startSize: Math.round(W * 0.118), minSize: Math.round(W * 0.08),
-    weight: 900, color: '#ffffff', maxLines: 2, lineRatio: 1.08
+    text: (prize || headline).toUpperCase(), x: cx, y, maxWidth: W * 0.88, maxHeight: Math.round(H * 0.28),
+    startSize: Math.round(W * 0.14), minSize: Math.round(W * 0.072),
+    weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.04
   });
   y += 18;
 
-  if (prizeText) {
-    ctx.font = `700 ${Math.round(W * 0.066)}px ${FONT}`; ctx.fillStyle = secondary;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(prizeText.length > 18 ? prizeText.slice(0, 17) + '…' : prizeText, cx, y);
-    y += Math.round(W * 0.09);
-  }
-
-  const qrSz = Math.round(W * 0.46), qrPad = Math.round(W * 0.028);
+  const qrSz = Math.round(W * 0.46), qrPad = Math.round(W * 0.03);
   roundedRect(ctx, cx - qrSz / 2 - qrPad, y - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 14);
   ctx.fillStyle = '#ffffff'; ctx.fill();
   ctx.drawImage(qrImage, cx - qrSz / 2, y, qrSz, qrSz);
-  y += qrSz + qrPad * 2 + 14;
+  y += qrSz + qrPad * 2 + 16;
 
-  ctx.font = `900 ${Math.round(W * 0.068)}px ${FONT}`; ctx.fillStyle = '#ffffff';
+  ctx.font = `900 ${Math.round(W * 0.072)}px ${FONT}`; ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText(cta, cx, y);
+  y += Math.round(W * 0.094);
+
+  // Expiry — minimal priority
+  if (expiresText) {
+    ctx.font = `500 ${Math.round(W * 0.034)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(expiresText, cx, y);
+  }
   ctx.textBaseline = 'alphabetic';
 }
 
 function renderLedSquare(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
-  const { primary, secondary, headline, cta, prizeText, storeName, logoImage } = data;
+  const { primary, secondary, headline, cta, prizeText, storeName, expiresText, logoImage } = data;
   const cx = W / 2;
+  const prize = stripEmoji(prizeText);
 
   ctx.fillStyle = '#080d18'; ctx.fillRect(0, 0, W, H);
   const bg = ctx.createLinearGradient(0, 0, W, H);
@@ -2024,57 +2081,57 @@ function renderLedSquare(ctx, canvas, qrImage, data) {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
   // Brand accent bars top + left
-  const tbH = Math.round(H * 0.055);
+  const tbH = Math.round(H * 0.05);
   const tbG = ctx.createLinearGradient(0, 0, W, 0);
   tbG.addColorStop(0, primary); tbG.addColorStop(1, secondary);
   ctx.fillStyle = tbG; ctx.fillRect(0, 0, W, tbH);
   ctx.fillStyle = primary; ctx.fillRect(0, 0, 6, H);
 
-  let y = tbH + Math.round(H * 0.045);
+  let y = tbH + Math.round(H * 0.035);
 
   // Logo compact
-  const lSz = Math.round(W * 0.24);
+  const lSz = Math.round(W * 0.17);
   drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, 12);
-  y += lSz + 12;
+  y += lSz + 10;
 
-  ctx.font = `600 ${Math.round(W * 0.052)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.9);
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(storeName.length > 16 ? storeName.slice(0, 15) + '…' : storeName, cx, y);
-  y += Math.round(W * 0.07);
+  // Store name — bigger, full white, fit to width (no truncation)
+  let sqSnSz = Math.round(W * 0.062);
+  do { ctx.font = `800 ${sqSnSz}px ${FONT}`; if (ctx.measureText(storeName).width <= W * 0.86) break; sqSnSz -= 2; } while (sqSnSz > Math.round(W * 0.04));
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(storeName, cx, y);
+  y += Math.round(sqSnSz * 1.3);
 
-  ctx.strokeStyle = primary; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(W * 0.18, y); ctx.lineTo(W * 0.82, y); ctx.stroke();
-  y += 16;
-
-  // Headline — HUGE
+  // PRIZE hero (headline demoted, omitted here to give QR room)
   y = drawTextBlock(ctx, {
-    text: headline, x: cx, y, maxWidth: W * 0.86, maxHeight: Math.round(H * 0.24),
-    startSize: Math.round(W * 0.12), minSize: Math.round(W * 0.076),
-    weight: 900, color: '#ffffff', maxLines: 2, lineRatio: 1.07
+    text: (prize || headline).toUpperCase(), x: cx, y, maxWidth: W * 0.88, maxHeight: Math.round(H * 0.24),
+    startSize: Math.round(W * 0.125), minSize: Math.round(W * 0.066),
+    weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.04
   });
-  y += 14;
+  y += 12;
 
-  if (prizeText) {
-    ctx.font = `700 ${Math.round(W * 0.06)}px ${FONT}`; ctx.fillStyle = secondary;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(prizeText.length > 18 ? prizeText.slice(0, 17) + '…' : prizeText, cx, y);
-    y += Math.round(W * 0.085);
-  }
-
-  // QR + CTA at bottom
-  const remaining = H - y - Math.round(H * 0.05);
-  const qrSz = Math.round(Math.min(remaining * 0.6, W * 0.36));
-  const qrPad = Math.round(qrSz * 0.06);
-  const ctaH  = Math.round(W * 0.076);
-  const totalQrBlock = qrPad + qrSz + qrPad + ctaH * 1.3;
-  const qrY   = y + (remaining - totalQrBlock) / 2;
-  roundedRect(ctx, cx - qrSz / 2 - qrPad, qrY - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 12);
+  // QR + CTA — fill remaining space, QR as large as fits
+  const reservedBot = expiresText ? Math.round(H * 0.06) : Math.round(H * 0.03);
+  const remaining   = H - y - reservedBot;
+  const ctaH  = Math.round(W * 0.07);
+  const qrPad = Math.round(W * 0.026);
+  const qrSz  = Math.round(Math.min(W * 0.46, remaining - ctaH - qrPad * 3));
+  const blockH = qrPad * 2 + qrSz + ctaH;
+  const qy = y + Math.max(0, (remaining - blockH) / 2);
+  roundedRect(ctx, cx - qrSz / 2 - qrPad, qy, qrSz + qrPad * 2, qrSz + qrPad * 2, 12);
   ctx.fillStyle = '#ffffff'; ctx.fill();
-  ctx.drawImage(qrImage, cx - qrSz / 2, qrY, qrSz, qrSz);
-  ctx.font = `900 ${Math.round(W * 0.058)}px ${FONT}`; ctx.fillStyle = '#ffffff';
+  ctx.drawImage(qrImage, cx - qrSz / 2, qy + qrPad, qrSz, qrSz);
+  ctx.font = `900 ${Math.round(W * 0.06)}px ${FONT}`; ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(cta, cx, qrY + qrSz + qrPad + 8);
+  ctx.fillText(cta, cx, qy + qrPad * 2 + qrSz + 6);
   ctx.textBaseline = 'alphabetic';
+
+  // Expiry — minimal priority
+  if (expiresText) {
+    ctx.font = `500 ${Math.round(W * 0.032)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText(expiresText, cx, H - Math.round(H * 0.02));
+    ctx.textBaseline = 'alphabetic';
+  }
 }
 
 // ─── LCD renderer (16:9 + 4:3 + vertical) ────────────────────────────────────
@@ -2111,31 +2168,37 @@ function renderLcdHorizSplit(ctx, canvas, qrImage, data) {
   ctx.fillStyle = tG; ctx.fillRect(0, 0, split, tBar);
 
   let y = pad;
-  const lSz = Math.round(H * 0.12);
+  const lSz = Math.round(H * 0.11);
   drawLogo(ctx, logoImage, lCx - lSz / 2, y, lSz, primary, 14);
   y += lSz + 12;
-  ctx.font = `700 ${Math.round(H * 0.028)}px ${FONT}`; ctx.fillStyle = primary;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(storeName.length > 24 ? storeName.slice(0, 23) + '…' : storeName, lCx, y);
-  y += Math.round(H * 0.038);
+  // Store name — bigger, fit to width (no truncation)
+  let snSz = Math.round(H * 0.044);
+  do { ctx.font = `800 ${snSz}px ${FONT}`; if (ctx.measureText(storeName).width <= split * 0.86) break; snSz -= 2; } while (snSz > Math.round(H * 0.028));
+  ctx.fillStyle = primary; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(storeName, lCx, y);
+  y += Math.round(snSz * 1.3);
   ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(split * 0.08, y); ctx.lineTo(split * 0.92, y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(split * 0.1, y); ctx.lineTo(split * 0.9, y); ctx.stroke();
   y += Math.round(H * 0.03);
-  ctx.font = `500 ${Math.round(H * 0.022)}px ${FONT}`; ctx.fillStyle = '#64748b';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(campaignName.length > 34 ? campaignName.slice(0, 33) + '…' : campaignName, lCx, y);
-  y += Math.round(H * 0.036);
+  // Eyebrow (headline) small, then PRIZE hero
+  if (prizeText && headline) {
+    ctx.font = `800 ${Math.round(H * 0.03)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.85);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const eb = headline.toUpperCase();
+    ctx.fillText(eb.length > 30 ? eb.slice(0, 29) + '…' : eb, lCx, y);
+    y += Math.round(H * 0.05);
+  }
   y = drawTextBlock(ctx, {
-    text: headline, x: lCx, y, maxWidth: split * 0.82, maxHeight: Math.round(H * 0.27),
-    startSize: Math.round(H * 0.1), minSize: Math.round(H * 0.054),
-    weight: 900, color: '#0f172a', maxLines: 2, lineRatio: 1.1
+    text: (stripEmoji(prizeText) || headline).toUpperCase(), x: lCx, y,
+    maxWidth: split * 0.86, maxHeight: Math.round(H * 0.4),
+    startSize: Math.round(H * 0.13), minSize: Math.round(H * 0.06),
+    weight: 900, color: '#0f172a', maxLines: 3, lineRatio: 1.04
   });
-  y += Math.round(H * 0.024);
-  if (prizeText) { y = drawPrizePill(ctx, prizeText, lCx, y, split * 0.82, primary, secondary); y += Math.round(H * 0.02); }
+  y += Math.round(H * 0.02);
   if (subtitle) {
     drawTextBlock(ctx, {
       text: subtitle, x: lCx, y, maxWidth: split * 0.76, maxHeight: Math.round(H * 0.09),
-      startSize: Math.round(H * 0.027), minSize: Math.round(H * 0.018),
+      startSize: Math.round(H * 0.026), minSize: Math.round(H * 0.016),
       weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.4
     });
   }
@@ -2148,7 +2211,7 @@ function renderLcdHorizSplit(ctx, canvas, qrImage, data) {
 
   const rCx = split + (W - split) / 2, rH = H - pad * 2;
   const ctaBtnH = Math.round(H * 0.072);
-  const qrSz = Math.min(Math.round(rH * 0.58), Math.round((W - split) * 0.64));
+  const qrSz = Math.min(Math.round(rH * 0.62), Math.round((W - split) * 0.66));
   const qrPad = Math.round(qrSz * 0.07);
   const qrY = pad + (rH - (qrSz + qrPad * 2 + 24 + ctaBtnH)) / 2;
   drawQrBlock(ctx, qrImage, rCx, qrY, qrSz, qrPad, Math.round(qrSz * 0.06));
@@ -2183,34 +2246,46 @@ function renderLcdCard(ctx, canvas, qrImage, data) {
   const lSz = Math.round(H * 0.1);
   drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, 14);
   y += lSz + 12;
-  ctx.font = `700 ${Math.round(H * 0.028)}px ${FONT}`; ctx.fillStyle = primary;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(storeName.length > 28 ? storeName.slice(0, 27) + '…' : storeName, cx, y);
-  y += Math.round(H * 0.038);
+  // Store name — bigger, fit to width (no truncation)
+  let snSz = Math.round(H * 0.04);
+  do { ctx.font = `800 ${snSz}px ${FONT}`; if (ctx.measureText(storeName).width <= iW * 0.9) break; snSz -= 2; } while (snSz > Math.round(H * 0.026));
+  ctx.fillStyle = primary; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(storeName, cx, y);
+  y += Math.round(snSz * 1.3);
   ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(cardX + cardW * 0.12, y); ctx.lineTo(cardX + cardW * 0.88, y); ctx.stroke();
   y += Math.round(H * 0.026);
-  ctx.font = `500 ${Math.round(H * 0.024)}px ${FONT}`; ctx.fillStyle = '#64748b';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(campaignName.length > 32 ? campaignName.slice(0, 31) + '…' : campaignName, cx, y);
-  y += Math.round(H * 0.036);
+  // Eyebrow (headline) small, then PRIZE hero
+  if (prizeText && headline) {
+    ctx.font = `800 ${Math.round(H * 0.028)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.85);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const eb = headline.toUpperCase();
+    ctx.fillText(eb.length > 32 ? eb.slice(0, 31) + '…' : eb, cx, y);
+    y += Math.round(H * 0.044);
+  }
   y = drawTextBlock(ctx, {
-    text: headline, x: cx, y, maxWidth: iW * 0.88, maxHeight: Math.round(H * 0.23),
-    startSize: Math.round(H * 0.088), minSize: 38, weight: 900, color: '#0f172a', maxLines: 2, lineRatio: 1.1
+    text: (stripEmoji(prizeText) || headline).toUpperCase(), x: cx, y,
+    maxWidth: iW * 0.9, maxHeight: Math.round(H * 0.2),
+    startSize: Math.round(H * 0.105), minSize: 40, weight: 900, color: '#0f172a', maxLines: 3, lineRatio: 1.05
   });
-  y += 16;
-  if (prizeText) { y = drawPrizePill(ctx, prizeText, cx, y, iW * 0.82, primary, secondary); y += 12; }
+  y += 14;
   if (subtitle) {
     y = drawTextBlock(ctx, {
-      text: subtitle, x: cx, y, maxWidth: iW * 0.74, maxHeight: Math.round(H * 0.08),
-      startSize: Math.round(H * 0.026), minSize: 18, weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.4
+      text: subtitle, x: cx, y, maxWidth: iW * 0.74, maxHeight: Math.round(H * 0.07),
+      startSize: Math.round(H * 0.024), minSize: 18, weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.4
     });
     y += 8;
   }
-  const qrSz = Math.round(W * 0.22), qrPad = Math.round(W * 0.02);
-  const footerH = Math.round(cardH * 0.065), ctaBtnH = Math.round(H * 0.056);
-  const ctaBtnY = cardY + cardH - footerH - ctaBtnH - 12;
-  drawQrBlock(ctx, qrImage, cx, ctaBtnY - qrSz - qrPad * 2 - 10 + qrPad, qrSz, qrPad, Math.round(W * 0.015));
+  // QR + CTA — QR follows content flow (fills space, never overlaps prize)
+  const footerH = expiresText ? Math.round(cardH * 0.05) : Math.round(cardH * 0.02);
+  const ctaBtnH = Math.round(H * 0.058);
+  const ctaBtnY = cardY + cardH - footerH - ctaBtnH - 10;
+  const qrPad   = Math.round(W * 0.018);
+  const zoneTop = y + 10;
+  const zoneBot = ctaBtnY - 16;
+  const qrSz    = Math.round(Math.min(W * 0.3, zoneBot - zoneTop - qrPad * 2));
+  const qrStartY = zoneTop + qrPad + Math.max(0, ((zoneBot - zoneTop) - (qrSz + qrPad * 2)) / 2);
+  drawQrBlock(ctx, qrImage, cx, qrStartY, qrSz, qrPad, Math.round(W * 0.012));
   drawCtaButton(ctx, cta, cx, ctaBtnY, iW * 0.64, ctaBtnH, primary, secondary);
   if (expiresText) {
     ctx.font = `500 ${Math.round(H * 0.018)}px ${FONT}`; ctx.fillStyle = '#94a3b8';
@@ -2240,74 +2315,65 @@ function renderLcdVertLayout(ctx, canvas, qrImage, data) {
 
   // Logo in header
   const lSz = Math.round(hBandH * 0.52);
-  drawLogo(ctx, logoImage, cx - lSz / 2, (hBandH - lSz) / 2, lSz, '#ffffff', 14);
+  drawLogo(ctx, logoImage, cx - lSz / 2, (hBandH - lSz) / 2, lSz, primary, 14);
 
-  // Store name below header (on white)
+  // Store name below header (on white) — bigger, fit to width
   let y = hBandH + Math.round(H * 0.036);
-  ctx.font = `800 ${Math.round(W * 0.062)}px ${FONT}`; ctx.fillStyle = primary;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(storeName.length > 20 ? storeName.slice(0, 19) + '…' : storeName, cx, y);
-  y += Math.round(W * 0.088);
+  let snSz = Math.round(W * 0.072);
+  do { ctx.font = `800 ${snSz}px ${FONT}`; if (ctx.measureText(storeName).width <= W * 0.88) break; snSz -= 2; } while (snSz > Math.round(W * 0.045));
+  ctx.fillStyle = primary; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(storeName, cx, y);
+  y += Math.round(snSz * 1.32);
 
   ctx.strokeStyle = hexToRgba(primary, 0.22); ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(W * 0.1, y); ctx.lineTo(W * 0.9, y); ctx.stroke();
   y += Math.round(H * 0.024);
 
-  // Campaign eyebrow
-  if (campaignName) {
-    ctx.font = `500 ${Math.round(W * 0.04)}px ${FONT}`; ctx.fillStyle = '#64748b';
+  // Eyebrow (headline) small, then PRIZE hero
+  if (prizeText && headline) {
+    ctx.font = `800 ${Math.round(W * 0.044)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.85);
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(campaignName.length > 30 ? campaignName.slice(0, 29) + '…' : campaignName, cx, y);
-    y += Math.round(H * 0.038);
+    const eb = headline.toUpperCase();
+    ctx.fillText(eb.length > 26 ? eb.slice(0, 25) + '…' : eb, cx, y);
+    y += Math.round(W * 0.066);
   }
 
-  // Headline
   y = drawTextBlock(ctx, {
-    text: headline, x: cx, y, maxWidth: W * 0.84, maxHeight: Math.round(H * 0.2),
-    startSize: Math.round(W * 0.1), minSize: Math.round(W * 0.06),
-    weight: 900, color: '#0f172a', maxLines: 2, lineRatio: 1.1
+    text: (stripEmoji(prizeText) || headline).toUpperCase(), x: cx, y,
+    maxWidth: W * 0.86, maxHeight: Math.round(H * 0.24),
+    startSize: Math.round(W * 0.135), minSize: Math.round(W * 0.07),
+    weight: 900, color: '#0f172a', maxLines: 3, lineRatio: 1.05
   });
-  y += Math.round(H * 0.022);
+  y += Math.round(H * 0.02);
 
-  // Prize pill
-  if (prizeText) {
-    y = drawPrizePill(ctx, prizeText, cx, y, W * 0.82, primary, secondary);
-    y += Math.round(H * 0.02);
-  }
-
-  // Subtitle
+  // Subtitle (optional, low priority)
   if (subtitle) {
     y = drawTextBlock(ctx, {
-      text: subtitle, x: cx, y, maxWidth: W * 0.76, maxHeight: Math.round(H * 0.08),
-      startSize: Math.round(W * 0.038), minSize: 22,
+      text: subtitle, x: cx, y, maxWidth: W * 0.76, maxHeight: Math.round(H * 0.07),
+      startSize: Math.round(W * 0.036), minSize: 22,
       weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.4
     });
     y += Math.round(H * 0.016);
   }
 
-  // QR + CTA — anchored from bottom
-  const botSec  = Math.round(H * 0.28);
-  const botY    = H - botSec;
-  const ctaBtnH = Math.round(W * 0.1);
-  const qrSz    = Math.round(Math.min(botSec * 0.54, W * 0.46));
-  const qrPad   = Math.round(qrSz * 0.06);
-  const totalBot = qrSz + qrPad * 2 + 20 + ctaBtnH;
-  const qrStartY = botY + (botSec - totalBot) / 2;
-
-  ctx.strokeStyle = hexToRgba(primary, 0.14); ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(W * 0.08, botY); ctx.lineTo(W * 0.92, botY); ctx.stroke();
-
-  ctx.font = `700 ${Math.round(W * 0.044)}px ${FONT}`; ctx.fillStyle = '#475569';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('Scansiona e partecipa', cx, qrStartY - Math.round(H * 0.018));
+  // QR + CTA — fill the space down to a minimal expiry line (no empty gap)
+  const expH      = expiresText ? Math.round(W * 0.046) : 0;
+  const ctaBtnH   = Math.round(W * 0.1);
+  const bottomPad = Math.round(H * 0.028);
+  const ctaY      = H - bottomPad - expH - ctaBtnH;
+  const qrPad     = Math.round(W * 0.03);
+  const zoneTop   = y + Math.round(H * 0.02);
+  const zoneBot   = ctaY - Math.round(H * 0.03);
+  const qrSz      = Math.round(Math.min(W * 0.54, zoneBot - zoneTop - qrPad * 2));
+  const qrStartY  = zoneTop + qrPad + Math.max(0, ((zoneBot - zoneTop) - (qrSz + qrPad * 2)) / 2);
 
   drawQrBlock(ctx, qrImage, cx, qrStartY, qrSz, qrPad, Math.round(qrSz * 0.06));
-  drawCtaButton(ctx, cta, cx, qrStartY + qrSz + qrPad * 2 + 20, W * 0.72, ctaBtnH, primary, secondary);
+  drawCtaButton(ctx, cta, cx, ctaY, W * 0.72, ctaBtnH, primary, secondary);
 
   if (expiresText) {
-    ctx.font = `400 ${Math.round(W * 0.032)}px ${FONT}`; ctx.fillStyle = '#94a3b8';
+    ctx.font = `400 ${Math.round(W * 0.03)}px ${FONT}`; ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText(expiresText, cx, H - Math.round(H * 0.016));
+    ctx.fillText(expiresText, cx, H - bottomPad);
     ctx.textBaseline = 'alphabetic';
   }
 }
