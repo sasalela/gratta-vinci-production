@@ -106,6 +106,14 @@ function applyCampaignBranding(config) {
   campaignTitle.textContent = config.name;
   document.getElementById('subtitle').textContent = config.description || 'Compila i dati e scopri se hai vinto.';
 
+  const shell = document.querySelector('.game-shell');
+  const gameType = config.gameType || 'scratch_card';
+  const typeClasses = ['game-type-scratch_card', 'game-type-wheel', 'game-type-instant_reveal'];
+  document.body.classList.remove(...typeClasses);
+  shell?.classList.remove(...typeClasses);
+  document.body.classList.add(`game-type-${gameType}`);
+  shell?.classList.add(`game-type-${gameType}`);
+
   if (config.store.logoUrl) {
     const img = document.createElement('img');
     img.src = config.store.logoUrl;
@@ -115,7 +123,7 @@ function applyCampaignBranding(config) {
     show(brandLogo);
   }
 
-  const meta = PromoGames.getMeta(config.gameType || 'scratch_card');
+  const meta = PromoGames.getMeta(gameType);
   playBtn.textContent = meta.playLabel;
 }
 
@@ -329,7 +337,16 @@ function showResult() {
   resultDiv.textContent = '';
   resultDiv.className = 'result';
 
+  const isScratch = (campaignConfig?.gameType || 'scratch_card') === 'scratch_card';
+
   if (gameData.won) {
+    if (isScratch) {
+      const prizeLabel = `${gameData.prize?.emoji || ''} ${gameData.prize?.name || ''}`.trim();
+      resultDiv.innerHTML = prizeLabel
+        ? `<p class="result-prize">${escapeHtml(prizeLabel)}</p>`
+        : '';
+      resultDiv.className = 'result winner';
+    }
     finalNotice.textContent = 'Mostra la card in negozio per ritirare il premio.';
     renderVoucherCard()
       .then(() => {
