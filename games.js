@@ -61,9 +61,6 @@ window.PromoGames = (() => {
       this.playStarted = false;
       this.scratching = false;
       this.initialCoverPixels = 0;
-      this.lastScratch = null;
-      this.dpr = 1;
-      this.brushRadius = 26;
       this.resultLayer = document.createElement('canvas');
       this.coverLayer = document.createElement('canvas');
       this.resultLayerCtx = this.resultLayer.getContext('2d');
@@ -73,7 +70,7 @@ window.PromoGames = (() => {
 
     start() {
       this.container.innerHTML = `
-        <canvas id="scratchCanvas" width="420" height="250" aria-label="Area da grattare"></canvas>
+        <canvas id="scratchCanvas" width="420" height="250"></canvas>
         <div class="scratch-progress"><div id="scratchProgressBar"></div></div>
         <p id="scratchProgressText" class="scratch-progress-text">Continua a grattare</p>
       `;
@@ -82,7 +79,11 @@ window.PromoGames = (() => {
       this.ctx = this.canvas.getContext('2d');
       this.progressBar = this.container.querySelector('#scratchProgressBar');
       this.progressText = this.container.querySelector('#scratchProgressText');
-      this.syncCanvasSize();
+      this.resultLayer.width = this.canvas.width;
+      this.resultLayer.height = this.canvas.height;
+      this.coverLayer.width = this.canvas.width;
+      this.coverLayer.height = this.canvas.height;
+
       this.drawWaitingLayer();
       this.drawCoverLayer();
       this.initialCoverPixels = this.countCoveredPixels();
@@ -90,54 +91,21 @@ window.PromoGames = (() => {
       this.bindEvents();
     }
 
-    syncCanvasSize() {
-      const cssWidth = Math.max(280, Math.min(this.container.clientWidth || 420, 420));
-      const cssHeight = Math.round(cssWidth * (250 / 420));
-      this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-      this.brushRadius = Math.max(22, Math.round(26 * this.dpr));
-      this.canvas.style.width = `${cssWidth}px`;
-      this.canvas.style.height = `${cssHeight}px`;
-      this.canvas.width = Math.round(cssWidth * this.dpr);
-      this.canvas.height = Math.round(cssHeight * this.dpr);
-      this.resultLayer.width = this.canvas.width;
-      this.resultLayer.height = this.canvas.height;
-      this.coverLayer.width = this.canvas.width;
-      this.coverLayer.height = this.canvas.height;
-    }
-
-    font(weight, sizePx) {
-      return `${weight} ${Math.round(sizePx * this.dpr)}px "Outfit", "Segoe UI", sans-serif`;
-    }
-
     bindEvents() {
-      this.handlers.mousedown = (event) => {
-        this.scratching = true;
-        this.lastScratch = null;
-        this.handleScratch(event);
-      };
-      this.handlers.mouseup = () => {
-        this.scratching = false;
-        this.lastScratch = null;
-      };
-      this.handlers.mouseleave = () => {
-        this.scratching = false;
-        this.lastScratch = null;
-      };
+      this.handlers.mousedown = () => { this.scratching = true; };
+      this.handlers.mouseup = () => { this.scratching = false; };
+      this.handlers.mouseleave = () => { this.scratching = false; };
       this.handlers.mousemove = (event) => {
         if (this.scratching) this.handleScratch(event);
       };
       this.handlers.touchstart = (event) => {
         this.scratching = true;
-        this.lastScratch = null;
         this.handleScratch(event);
       };
       this.handlers.touchmove = (event) => {
         if (this.scratching) this.handleScratch(event);
       };
-      this.handlers.touchend = () => {
-        this.scratching = false;
-        this.lastScratch = null;
-      };
+      this.handlers.touchend = () => { this.scratching = false; };
 
       this.canvas.addEventListener('mousedown', this.handlers.mousedown);
       this.canvas.addEventListener('mouseup', this.handlers.mouseup);
@@ -188,105 +156,98 @@ window.PromoGames = (() => {
         : 'Continua a grattare';
     }
 
-    drawNeutralSurface(ctx, primary) {
-      const { width, height } = ctx.canvas;
-      const radius = Math.round(20 * this.dpr);
-      ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = '#f3f4f6';
-      roundedRect(ctx, 0, 0, width, height, radius);
-      ctx.fill();
-
-      ctx.strokeStyle = primary;
-      ctx.lineWidth = Math.max(2, Math.round(2 * this.dpr));
-      roundedRect(
-        ctx,
-        Math.round(10 * this.dpr),
-        Math.round(10 * this.dpr),
-        width - Math.round(20 * this.dpr),
-        height - Math.round(20 * this.dpr),
-        Math.round(14 * this.dpr)
-      );
-      ctx.stroke();
-
-      ctx.fillStyle = '#ffffff';
-      roundedRect(
-        ctx,
-        Math.round(18 * this.dpr),
-        Math.round(18 * this.dpr),
-        width - Math.round(36 * this.dpr),
-        height - Math.round(36 * this.dpr),
-        Math.round(12 * this.dpr)
-      );
-      ctx.fill();
-    }
-
     drawWaitingLayer() {
       const primary = this.context.campaignConfig?.store?.primaryColor || '#667eea';
-      this.drawNeutralSurface(this.resultLayerCtx, primary);
-      this.resultLayerCtx.textAlign = 'center';
-      this.resultLayerCtx.textBaseline = 'middle';
+      const secondary = this.context.campaignConfig?.store?.secondaryColor || '#764ba2';
+      this.resultLayerCtx.clearRect(0, 0, this.resultLayer.width, this.resultLayer.height);
+
+      const gradient = this.resultLayerCtx.createLinearGradient(0, 0, this.resultLayer.width, this.resultLayer.height);
+      gradient.addColorStop(0, '#fffaf0');
+      gradient.addColorStop(1, '#eef2ff');
+      this.resultLayerCtx.fillStyle = gradient;
+      roundedRect(this.resultLayerCtx, 0, 0, this.resultLayer.width, this.resultLayer.height, 28);
+      this.resultLayerCtx.fill();
+
       this.resultLayerCtx.fillStyle = primary;
-      this.resultLayerCtx.font = this.font(600, 18);
-      this.resultLayerCtx.fillText('CONTINUA A GRATTARE', this.resultLayer.width / 2, this.resultLayer.height / 2);
+      roundedRect(this.resultLayerCtx, 18, 18, this.resultLayer.width - 36, this.resultLayer.height - 36, 24);
+      this.resultLayerCtx.fill();
+
+      this.resultLayerCtx.fillStyle = '#ffffff';
+      roundedRect(this.resultLayerCtx, 28, 28, this.resultLayer.width - 56, this.resultLayer.height - 56, 20);
+      this.resultLayerCtx.fill();
+
+      this.resultLayerCtx.textAlign = 'center';
+      this.resultLayerCtx.fillStyle = primary;
+      this.resultLayerCtx.font = '900 18px Arial';
+      this.resultLayerCtx.fillText('CONTINUA A GRATTARE', this.resultLayer.width / 2, 104);
+      this.resultLayerCtx.fillStyle = secondary;
+      this.resultLayerCtx.font = '700 15px Arial';
+      this.resultLayerCtx.fillText('Ancora un po’ e scoprirai l’esito', this.resultLayer.width / 2, 145);
     }
 
     drawResultLayer() {
-      const primary = this.context.campaignConfig?.store?.primaryColor || '#667eea';
-      this.drawNeutralSurface(this.resultLayerCtx, primary);
+      const { gameData, campaignConfig } = this.context;
+      const primary = campaignConfig?.store?.primaryColor || '#667eea';
+      const secondary = campaignConfig?.store?.secondaryColor || '#764ba2';
+      this.resultLayerCtx.clearRect(0, 0, this.resultLayer.width, this.resultLayer.height);
+
+      const gradient = this.resultLayerCtx.createLinearGradient(0, 0, this.resultLayer.width, this.resultLayer.height);
+      gradient.addColorStop(0, '#fffaf0');
+      gradient.addColorStop(1, '#eef2ff');
+      this.resultLayerCtx.fillStyle = gradient;
+      roundedRect(this.resultLayerCtx, 0, 0, this.resultLayer.width, this.resultLayer.height, 28);
+      this.resultLayerCtx.fill();
+
+      this.resultLayerCtx.fillStyle = primary;
+      roundedRect(this.resultLayerCtx, 18, 18, this.resultLayer.width - 36, this.resultLayer.height - 36, 24);
+      this.resultLayerCtx.fill();
+
+      this.resultLayerCtx.fillStyle = '#ffffff';
+      roundedRect(this.resultLayerCtx, 28, 28, this.resultLayer.width - 56, this.resultLayer.height - 56, 20);
+      this.resultLayerCtx.fill();
+
+      this.resultLayerCtx.fillStyle = secondary;
+      this.resultLayerCtx.globalAlpha = 0.12;
+      for (let i = 0; i < 18; i += 1) {
+        this.resultLayerCtx.beginPath();
+        this.resultLayerCtx.arc(
+          35 + Math.random() * (this.resultLayer.width - 70),
+          35 + Math.random() * (this.resultLayer.height - 70),
+          4 + Math.random() * 9,
+          0,
+          Math.PI * 2
+        );
+        this.resultLayerCtx.fill();
+      }
+      this.resultLayerCtx.globalAlpha = 1;
+
       this.resultLayerCtx.textAlign = 'center';
-      this.resultLayerCtx.textBaseline = 'middle';
-      this.resultLayerCtx.fillStyle = '#6b7280';
-      this.resultLayerCtx.font = this.font(400, 16);
-      this.resultLayerCtx.fillText('…', this.resultLayer.width / 2, this.resultLayer.height / 2);
+      this.resultLayerCtx.fillStyle = primary;
+      this.resultLayerCtx.font = '800 15px Arial';
+      this.resultLayerCtx.fillText('Gratta qui', this.resultLayer.width / 2, 72);
+      this.resultLayerCtx.fillStyle = '#111827';
+      this.resultLayerCtx.font = '900 28px Arial';
+      this.resultLayerCtx.fillText('…', this.resultLayer.width / 2, 130);
     }
 
     drawCoverLayer() {
-      const { width, height } = this.coverLayer;
-      const radius = Math.round(20 * this.dpr);
-      this.coverLayerCtx.clearRect(0, 0, width, height);
-
-      const metal = this.coverLayerCtx.createLinearGradient(0, 0, width, height);
-      metal.addColorStop(0, '#8a929c');
-      metal.addColorStop(0.18, '#d7dce2');
-      metal.addColorStop(0.36, '#9aa3ad');
-      metal.addColorStop(0.55, '#eceff2');
-      metal.addColorStop(0.72, '#a7b0ba');
-      metal.addColorStop(1, '#6f7883');
-      this.coverLayerCtx.fillStyle = metal;
-      roundedRect(this.coverLayerCtx, 0, 0, width, height, radius);
+      this.coverLayerCtx.clearRect(0, 0, this.coverLayer.width, this.coverLayer.height);
+      const cover = this.coverLayerCtx.createLinearGradient(0, 0, this.coverLayer.width, this.coverLayer.height);
+      cover.addColorStop(0, '#6b7280');
+      cover.addColorStop(0.22, '#f8fafc');
+      cover.addColorStop(0.5, '#9ca3af');
+      cover.addColorStop(0.74, '#e5e7eb');
+      cover.addColorStop(1, '#64748b');
+      this.coverLayerCtx.fillStyle = cover;
+      roundedRect(this.coverLayerCtx, 0, 0, this.coverLayer.width, this.coverLayer.height, 28);
       this.coverLayerCtx.fill();
 
-      this.coverLayerCtx.save();
-      roundedRect(this.coverLayerCtx, 0, 0, width, height, radius);
-      this.coverLayerCtx.clip();
-      this.coverLayerCtx.strokeStyle = 'rgba(255,255,255,0.18)';
-      this.coverLayerCtx.lineWidth = Math.max(1, Math.round(this.dpr));
-      for (let i = -height; i < width + height; i += Math.round(7 * this.dpr)) {
-        this.coverLayerCtx.beginPath();
-        this.coverLayerCtx.moveTo(i, 0);
-        this.coverLayerCtx.lineTo(i + height, height);
-        this.coverLayerCtx.stroke();
-      }
-
-      const grain = this.coverLayerCtx.getImageData(0, 0, width, height);
-      const data = grain.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const n = (Math.random() - 0.5) * 22;
-        data[i] = Math.max(0, Math.min(255, data[i] + n));
-        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + n));
-        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + n));
-      }
-      this.coverLayerCtx.putImageData(grain, 0, 0);
-      this.coverLayerCtx.restore();
-
       this.coverLayerCtx.textAlign = 'center';
-      this.coverLayerCtx.textBaseline = 'middle';
-      this.coverLayerCtx.fillStyle = 'rgba(255,255,255,0.92)';
-      this.coverLayerCtx.font = this.font(600, 28);
-      this.coverLayerCtx.fillText('GRATTA QUI', width / 2, height / 2 - Math.round(10 * this.dpr));
-      this.coverLayerCtx.font = this.font(400, 14);
-      this.coverLayerCtx.fillStyle = 'rgba(255,255,255,0.78)';
-      this.coverLayerCtx.fillText('Scopri se hai vinto il premio', width / 2, height / 2 + Math.round(18 * this.dpr));
+      this.coverLayerCtx.fillStyle = '#ffffff';
+      this.coverLayerCtx.font = '900 30px Arial';
+      this.coverLayerCtx.fillText('GRATTA QUI', this.coverLayer.width / 2, this.coverLayer.height / 2 - 6);
+      this.coverLayerCtx.font = '700 15px Arial';
+      this.coverLayerCtx.fillText('Scopri se hai vinto il premio', this.coverLayer.width / 2, this.coverLayer.height / 2 + 25);
     }
 
     composeScratchCanvas() {
@@ -298,27 +259,10 @@ window.PromoGames = (() => {
     scratchAt(x, y) {
       this.coverLayerCtx.save();
       this.coverLayerCtx.globalCompositeOperation = 'destination-out';
-      this.coverLayerCtx.lineCap = 'round';
-      this.coverLayerCtx.lineJoin = 'round';
-      this.coverLayerCtx.lineWidth = this.brushRadius * 2;
-      this.coverLayerCtx.shadowBlur = Math.round(6 * this.dpr);
-      this.coverLayerCtx.shadowColor = 'rgba(0,0,0,0.35)';
-      this.coverLayerCtx.strokeStyle = '#000';
-      this.coverLayerCtx.fillStyle = '#000';
-
-      if (this.lastScratch) {
-        this.coverLayerCtx.beginPath();
-        this.coverLayerCtx.moveTo(this.lastScratch.x, this.lastScratch.y);
-        this.coverLayerCtx.lineTo(x, y);
-        this.coverLayerCtx.stroke();
-      } else {
-        this.coverLayerCtx.beginPath();
-        this.coverLayerCtx.arc(x, y, this.brushRadius, 0, Math.PI * 2);
-        this.coverLayerCtx.fill();
-      }
-
+      this.coverLayerCtx.beginPath();
+      this.coverLayerCtx.arc(x, y, 24, 0, Math.PI * 2);
+      this.coverLayerCtx.fill();
       this.coverLayerCtx.restore();
-      this.lastScratch = { x, y };
       this.composeScratchCanvas();
 
       const remainingCoverPixels = this.countCoveredPixels();
