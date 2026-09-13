@@ -8,6 +8,12 @@ import {
   executePlay,
   executeRedeem
 } from '../lib/game-flow';
+import {
+  customerFieldsForPublicResponse,
+  customerFieldsForPlayValidation,
+  validateCustomerData,
+  type CustomerField
+} from '../lib/customer-fields';
 
 // ==========================================
 // SCHEMAS
@@ -197,8 +203,6 @@ type Prize = {
   description: string;
 };
 
-type CustomerField = z.infer<typeof CustomerFieldSchema>;
-
 // ==========================================
 // UTILITIES
 // ==========================================
@@ -368,31 +372,6 @@ async function getCurrentUser(payload: AuthTokenPayload | null) {
   return prisma.user.findFirst({
     where: { id: payload.sub, active: true }
   });
-}
-
-function getCustomerFields(value: unknown): CustomerField[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value as CustomerField[];
-}
-
-function validateCustomerData(fields: CustomerField[], customerData: Record<string, unknown>) {
-  const errors: string[] = [];
-
-  for (const field of fields) {
-    if (!field.enabled || !field.required) {
-      continue;
-    }
-
-    const value = customerData[field.key];
-    if (value === undefined || value === null || String(value).trim() === '') {
-      errors.push(`${field.label} is required`);
-    }
-  }
-
-  return errors;
 }
 
 function slugify(value: string): string {
@@ -1048,7 +1027,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           description: campaign.description,
           gameType: campaign.gameType,
           guaranteedWin: campaign.guaranteedWin,
-          customerFields: getCustomerFields(campaign.customerFields),
+          customerFields: customerFieldsForPublicResponse(campaign.customerFields),
           loseMessage: campaign.loseMessage,
           startDate: campaign.startDate,
           endDate: campaign.endDate,
@@ -1084,6 +1063,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { storeSlug, campaignSlug, privacyConsent, deviceKey } = validation.data;
       const customerData = validation.data.customerData || {};
       const email = validation.data.email || String(customerData.email || '');
+      const customerDataForValidation = {
+        ...customerData,
+        ...(email ? { email } : {})
+      };
 
       if (!privacyConsent) {
         return res.status(400).json({
@@ -1132,12 +1115,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const customerFields = getCustomerFields(campaign.customerFields);
-      const fieldErrors = validateCustomerData(customerFields, customerData);
-
-      if (!email) {
-        fieldErrors.push('Email is required');
-      }
+      const customerFields = customerFieldsForPlayValidation(campaign.customerFields);
+      const fieldErrors = validateCustomerData(customerFields, customerDataForValidation);
 
       if (fieldErrors.length > 0) {
         return res.status(400).json({
