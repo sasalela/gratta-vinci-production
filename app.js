@@ -30,6 +30,21 @@ const voucherCanvas = document.getElementById('voucherCanvas');
 const downloadVoucherBtn = document.getElementById('downloadVoucherBtn');
 let voucherCtx = null;
 
+function setGameUiState(state) {
+  const shell = document.querySelector('.game-shell');
+  gameSection.classList.remove('game-ready', 'game-playing', 'game-revealed');
+  shell?.classList.remove('game-ready', 'game-playing', 'game-revealed');
+  if (state) {
+    gameSection.classList.add(state);
+    shell?.classList.add(state);
+  }
+}
+
+function markPlayStarted() {
+  if (gameSection.classList.contains('game-revealed')) return;
+  setGameUiState('game-playing');
+}
+
 function getVoucherContext() {
   if (!voucherCtx) {
     voucherCtx = voucherCanvas.getContext('2d');
@@ -264,18 +279,20 @@ function initGame() {
 
   const gameType = campaignConfig?.gameType || 'scratch_card';
   const meta = PromoGames.getMeta(gameType);
-  gameEyebrow.textContent = 'Un solo tentativo';
+  gameEyebrow.textContent = 'Hai una giocata';
   gameTitle.textContent = meta.title;
   gameHelp.textContent = meta.help;
   resultDiv.textContent = '';
   resultDiv.className = 'result';
   hide(finalNotice);
   hide(voucherCard);
+  setGameUiState('game-ready');
   gameSurface.innerHTML = '';
 
   activeGame = PromoGames.create(gameType, gameSurface, {
     gameData,
     campaignConfig,
+    onPlayStart: markPlayStarted,
     onReveal: handleReveal
   });
   activeGame.start();
@@ -290,39 +307,44 @@ async function handleReveal() {
     });
     const payload = await response.json();
     if (!response.ok || !payload.success) {
+      setGameUiState('game-revealed');
       resultDiv.textContent = payload.error || 'Impossibile ottenere il risultato.';
       resultDiv.className = 'result loser';
-      show(finalNotice);
       return;
     }
     gameData = { ...gameData, ...payload.data };
     showResult();
   } catch {
+    setGameUiState('game-revealed');
     resultDiv.textContent = 'Impossibile contattare il server. Riprova più tardi.';
     resultDiv.className = 'result loser';
-    show(finalNotice);
   }
 }
 
 function showResult() {
   if (!gameData) return;
+  setGameUiState('game-revealed');
+  hide(finalNotice);
+  hide(voucherCard);
+  resultDiv.textContent = '';
+  resultDiv.className = 'result';
 
   if (gameData.won) {
-    const expiresAt = new Date(gameData.expiresAt).toLocaleDateString('it-IT');
-    resultDiv.innerHTML =
-      `<strong>${escapeHtml(gameData.prize.emoji || '')} ${escapeHtml(gameData.prize.name)}</strong><br>` +
-      `Codice voucher: <code>${escapeHtml(gameData.voucherCode)}</code><br>` +
-      `Scade il: ${expiresAt}<br>` +
-      '<span class="small-note">Scarica la card premio e conservala nella galleria del telefono.</span>';
-    resultDiv.className = 'result winner';
-    renderVoucherCard().then(() => show(voucherCard)).catch(() => show(voucherCard));
-    show(finalNotice);
+    finalNotice.textContent = 'Mostra la card in negozio per ritirare il premio.';
+    renderVoucherCard()
+      .then(() => {
+        show(voucherCard);
+        show(finalNotice);
+      })
+      .catch(() => {
+        show(voucherCard);
+        show(finalNotice);
+      });
     return;
   }
 
   resultDiv.textContent = gameData.loseMessage || campaignConfig?.loseMessage || 'Niente premio oggi — ci vediamo alla prossima!';
   resultDiv.className = 'result loser';
-  show(finalNotice);
 }
 
 async function renderVoucherCard() {
