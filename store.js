@@ -600,6 +600,14 @@ function renderTable(container, columns, rows) {
   container.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
+/** Stessa regola di lib/customer-fields.ts (editor non importa il modulo TS). */
+function resolveEffectiveCustomerFields(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [{ key: 'email', label: 'Email', required: true, enabled: true }];
+  }
+  return raw;
+}
+
 function getCustomerFields() {
   const labels = {
     name: 'Nome',
@@ -1182,9 +1190,10 @@ function editCampaign(campaignId) {
   document.getElementById('campaignActive').checked = campaign.active;
   updateGuaranteedWinUi();
 
+  const effectiveFields = resolveEffectiveCustomerFields(campaign.customerFields);
   document.querySelectorAll('[data-field]').forEach((input) => {
-    const field = (campaign.customerFields || []).find((item) => item.key === input.dataset.field);
-    input.checked = Boolean(field?.enabled) || ['name', 'email'].includes(input.dataset.field);
+    const field = effectiveFields.find((item) => item.key === input.dataset.field);
+    input.checked = Boolean(field?.enabled);
   });
 
   renderPrizeEditor(campaign);
