@@ -2,17 +2,17 @@ window.PromoGames = (() => {
   const META = {
     scratch_card: {
       title: 'Raschia la card',
-      help: 'Passa il dito sulla card per scoprire l’esito. La giocata vale una sola volta.',
+      help: 'Passa il dito sulla card',
       playLabel: 'Inizia e gratta'
     },
     wheel: {
       title: 'Ruota della fortuna',
-      help: 'Avvia la ruota e premi STOP quando ti senti fortunato. L’esito è già deciso, tu scegli il momento.',
+      help: 'Premi per far girare la ruota',
       playLabel: 'Gira la ruota'
     },
     instant_reveal: {
       title: 'Scatole misteriose',
-      help: 'Tre scatole, un solo esito. Scegli quella giusta e guardala aprirsi.',
+      help: 'Scegli una scatola',
       playLabel: 'Scegli una scatola'
     }
   };
@@ -58,6 +58,7 @@ window.PromoGames = (() => {
       this.context = context;
       this.threshold = 50;
       this.revealed = false;
+      this.playStarted = false;
       this.scratching = false;
       this.initialCoverPixels = 0;
       this.resultLayer = document.createElement('canvas');
@@ -130,6 +131,10 @@ window.PromoGames = (() => {
     handleScratch(event) {
       if (this.revealed) return;
       event.preventDefault();
+      if (!this.playStarted) {
+        this.playStarted = true;
+        this.context.onPlayStart?.();
+      }
       const { x, y } = this.getCanvasPosition(event);
       this.scratchAt(x, y);
     }
@@ -147,7 +152,7 @@ window.PromoGames = (() => {
       const safePercentage = Math.max(0, Math.min(100, Math.round(percentage)));
       this.progressBar.style.width = `${safePercentage}%`;
       this.progressText.textContent = safePercentage >= this.threshold
-        ? 'Risultato sbloccato.'
+        ? ''
         : 'Continua a grattare';
     }
 
@@ -175,12 +180,9 @@ window.PromoGames = (() => {
       this.resultLayerCtx.fillStyle = primary;
       this.resultLayerCtx.font = '900 18px Arial';
       this.resultLayerCtx.fillText('CONTINUA A GRATTARE', this.resultLayer.width / 2, 104);
-      this.resultLayerCtx.fillStyle = '#111827';
-      this.resultLayerCtx.font = '900 28px Arial';
-      this.resultLayerCtx.fillText('Il risultato è nascosto', this.resultLayer.width / 2, 145);
       this.resultLayerCtx.fillStyle = secondary;
       this.resultLayerCtx.font = '700 15px Arial';
-      this.resultLayerCtx.fillText('Ancora un po’ e scoprirai l’esito', this.resultLayer.width / 2, 176);
+      this.resultLayerCtx.fillText('Ancora un po’ e scoprirai l’esito', this.resultLayer.width / 2, 145);
     }
 
     drawResultLayer() {
@@ -222,7 +224,7 @@ window.PromoGames = (() => {
       this.resultLayerCtx.textAlign = 'center';
       this.resultLayerCtx.fillStyle = primary;
       this.resultLayerCtx.font = '800 15px Arial';
-      this.resultLayerCtx.fillText('ESITO IN ARRIVO', this.resultLayer.width / 2, 72);
+      this.resultLayerCtx.fillText('Gratta qui', this.resultLayer.width / 2, 72);
       this.resultLayerCtx.fillStyle = '#111827';
       this.resultLayerCtx.font = '900 28px Arial';
       this.resultLayerCtx.fillText('…', this.resultLayer.width / 2, 130);
@@ -276,6 +278,10 @@ window.PromoGames = (() => {
     reveal() {
       if (this.revealed) return;
       this.revealed = true;
+      if (!this.playStarted) {
+        this.playStarted = true;
+        this.context.onPlayStart?.();
+      }
       this.drawResultLayer();
       this.coverLayerCtx.clearRect(0, 0, this.coverLayer.width, this.coverLayer.height);
       this.composeScratchCanvas();
@@ -476,6 +482,7 @@ window.PromoGames = (() => {
       this.cancelAnimation();
       this.spinning = true;
       this.stopping = false;
+      this.context.onPlayStart?.();
       this.spinBtn.textContent = 'STOP!';
       this.spinBtn.classList.add('wheel-stop-btn');
       this.statusEl.textContent = 'La ruota gira… premi STOP quando vuoi!';
@@ -615,6 +622,7 @@ window.PromoGames = (() => {
     openBox(selectedIndex) {
       if (this.opened) return;
       this.opened = true;
+      this.context.onPlayStart?.();
 
       const { campaignConfig } = this.context;
       const guaranteedWin = Boolean(campaignConfig?.guaranteedWin);

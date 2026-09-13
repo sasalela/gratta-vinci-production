@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gratta & Vinci - Gioco Promozionale</title>
-    <link rel="stylesheet" href="style.css?v=2.3.1">
+    <link rel="stylesheet" href="style.css?v=2.3.2">
 </head>
 <body>
     <main class="game-shell">
@@ -30,22 +30,20 @@
         </div>
 
         <div id="gameSection" class="card hidden">
-            <p class="eyebrow" id="gameEyebrow">Un solo tentativo</p>
+            <p class="eyebrow" id="gameEyebrow">Hai una giocata</p>
             <h2 id="gameTitle">Gioco</h2>
             <p id="gameHelp" class="game-help">Caricamento gioco...</p>
             <div id="gameSurface"></div>
             <div id="result"></div>
             <div id="voucherCard" class="voucher-card hidden">
-                <h3>La tua card premio</h3>
-                <p>Scaricala e conservala nella galleria del telefono. Mostrala in negozio per ritirare il premio.</p>
                 <canvas id="voucherCanvas" width="900" height="1400"></canvas>
                 <button id="downloadVoucherBtn" type="button">Scarica card premio</button>
             </div>
-            <p id="finalNotice" class="final-notice hidden">Giocata registrata. Se hai vinto, conserva la card premio e mostrala al negoziante.</p>
+            <p id="finalNotice" class="final-notice hidden">Mostra la card in negozio per ritirare il premio.</p>
         </div>
     </main>
 
-    <script src="games.js?v=2.3.1"></script>
-    <script src="app.js?v=2.3.1"></script>
+    <script src="games.js?v=2.3.2"></script>
+    <script src="app.js?v=2.3.2"></script>
 </body>
 </html>

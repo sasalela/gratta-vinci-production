@@ -203,6 +203,49 @@ canvas {
   margin-bottom: 8px;
 }
 
+/* Prima del gioco: una sola istruzione (niente eyebrow/titolo/status extra) */
+#gameSection.game-ready #gameEyebrow,
+#gameSection.game-ready #gameTitle,
+#gameSection.game-ready .wheel-status,
+#gameSection.game-ready .mystery-prompt,
+#gameSection.game-ready .scratch-progress,
+#gameSection.game-ready .scratch-progress-text {
+  display: none;
+}
+
+/* Durante e dopo il gioco: nessuna istruzione a schermo */
+#gameSection.game-playing #gameEyebrow,
+#gameSection.game-playing #gameTitle,
+#gameSection.game-playing #gameHelp,
+#gameSection.game-playing .scratch-progress,
+#gameSection.game-playing .scratch-progress-text,
+#gameSection.game-playing .wheel-status,
+#gameSection.game-playing .mystery-prompt,
+#gameSection.game-revealed #gameEyebrow,
+#gameSection.game-revealed #gameTitle,
+#gameSection.game-revealed #gameHelp,
+#gameSection.game-revealed .scratch-progress,
+#gameSection.game-revealed .scratch-progress-text,
+#gameSection.game-revealed .wheel-status,
+#gameSection.game-revealed .mystery-prompt,
+#gameSection.game-revealed #gameSurface {
+  display: none;
+}
+
+.game-shell.game-playing #subtitle,
+.game-shell.game-revealed #subtitle {
+  display: none;
+}
+
+.game-shell.game-revealed .hero {
+  padding-bottom: 14px;
+}
+
+.game-shell.game-revealed #gameSection.card {
+  padding-top: 14px;
+  padding-bottom: 16px;
+}
+
 .wheel-shell {
   align-items: center;
   display: grid;
@@ -454,11 +497,17 @@ button:disabled {
 }
 
 .result {
-  margin-top: 18px;
-  padding: 20px;
+  margin-top: 12px;
+  padding: 16px;
   border-radius: 22px;
-  line-height: 1.6;
+  line-height: 1.45;
   font-size: 1.05rem;
+}
+
+.result:empty {
+  display: none;
+  margin: 0;
+  padding: 0;
 }
 
 .result.winner {
@@ -496,11 +545,11 @@ button:disabled {
 }
 
 .voucher-card {
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 24px;
-  margin-top: 18px;
-  padding: 18px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  margin-top: 4px;
+  padding: 0;
   text-align: center;
 }
 
@@ -520,8 +569,8 @@ button:disabled {
 #voucherCanvas {
   border-radius: 20px;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
-  margin: 10px auto 12px;
-  max-height: 440px;
+  margin: 0 auto 10px;
+  max-height: min(52vh, 360px);
   object-fit: contain;
   width: auto;
 }
@@ -536,7 +585,7 @@ button:disabled {
 }
 
 .final-notice {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .hidden {

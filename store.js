@@ -1159,7 +1159,7 @@ function resetCampaignForm() {
   campaignForm.reset();
   document.getElementById('campaignActive').checked = true;
   document.getElementById('voucherValidityDays').value = 15;
-  document.getElementById('loseMessage').value = 'Nessun premio questa volta.';
+  document.getElementById('loseMessage').value = 'Niente premio oggi — ci vediamo alla prossima!';
   document.getElementById('gameType').value = 'scratch_card';
   document.getElementById('guaranteedWin').checked = false;
   updateGuaranteedWinUi();
@@ -1185,7 +1185,7 @@ function editCampaign(campaignId) {
   document.getElementById('playLimitMode').value = campaign.playLimitMode || 'per_campaign';
   document.getElementById('gameType').value = campaign.gameType || 'scratch_card';
   document.getElementById('voucherValidityDays').value = campaign.voucherValidityDays || 15;
-  document.getElementById('loseMessage').value = campaign.loseMessage || 'Nessun premio questa volta.';
+  document.getElementById('loseMessage').value = campaign.loseMessage || 'Niente premio oggi — ci vediamo alla prossima!';
   document.getElementById('guaranteedWin').checked = Boolean(campaign.guaranteedWin);
   document.getElementById('campaignActive').checked = campaign.active;
   updateGuaranteedWinUi();
@@ -1257,7 +1257,7 @@ async function saveCampaign(event) {
       endDate: document.getElementById('endDate').value,
       playLimitMode: document.getElementById('playLimitMode').value,
       voucherValidityDays: Number(document.getElementById('voucherValidityDays').value || 15),
-      loseMessage: document.getElementById('loseMessage').value.trim() || 'Nessun premio questa volta.',
+      loseMessage: document.getElementById('loseMessage').value.trim() || 'Niente premio oggi — ci vediamo alla prossima!',
       gameType: document.getElementById('gameType').value,
       guaranteedWin: document.getElementById('guaranteedWin').checked,
       active: document.getElementById('campaignActive').checked,
