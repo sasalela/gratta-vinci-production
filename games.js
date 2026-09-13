@@ -180,12 +180,9 @@ window.PromoGames = (() => {
       this.resultLayerCtx.fillStyle = primary;
       this.resultLayerCtx.font = '900 18px Arial';
       this.resultLayerCtx.fillText('CONTINUA A GRATTARE', this.resultLayer.width / 2, 104);
-      this.resultLayerCtx.fillStyle = '#111827';
-      this.resultLayerCtx.font = '900 28px Arial';
-      this.resultLayerCtx.fillText('Il risultato è nascosto', this.resultLayer.width / 2, 145);
       this.resultLayerCtx.fillStyle = secondary;
       this.resultLayerCtx.font = '700 15px Arial';
-      this.resultLayerCtx.fillText('Ancora un po’ e scoprirai l’esito', this.resultLayer.width / 2, 176);
+      this.resultLayerCtx.fillText('Ancora un po’ e scoprirai l’esito', this.resultLayer.width / 2, 145);
     }
 
     drawResultLayer() {
