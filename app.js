@@ -177,7 +177,7 @@ async function validateSetup() {
 
     campaignConfig = payload.data;
     applyCampaignBranding(campaignConfig);
-    campaignInfo.textContent = 'Completa i campi richiesti per registrare la tua partecipazione.';
+    campaignInfo.textContent = 'Lascia i tuoi dati e scopri subito se hai vinto';
     renderDynamicFields(campaignConfig.customerFields || []);
     show(setupForm);
     return true;
@@ -320,7 +320,7 @@ function showResult() {
     return;
   }
 
-  resultDiv.textContent = gameData.loseMessage || campaignConfig?.loseMessage || 'Nessun premio questa volta.';
+  resultDiv.textContent = gameData.loseMessage || campaignConfig?.loseMessage || 'Niente premio oggi — ci vediamo alla prossima!';
   resultDiv.className = 'result loser';
   show(finalNotice);
 }

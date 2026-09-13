@@ -128,7 +128,7 @@ const StoreCampaignSchema = z.object({
   gameType: z.enum(['scratch_card', 'wheel', 'instant_reveal']).default('scratch_card'),
   customerFields: z.array(CustomerFieldSchema).default([]),
   playLimitMode: z.enum(['per_campaign', 'per_day']).default('per_campaign'),
-  loseMessage: z.string().min(1).default('Nessun premio questa volta.'),
+  loseMessage: z.string().min(1).default('Niente premio oggi — ci vediamo alla prossima!'),
   guaranteedWin: z.boolean().default(false),
   voucherValidityDays: z.number().int().min(1).max(365).default(15),
   active: z.boolean().default(true),
@@ -1121,7 +1121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (fieldErrors.length > 0) {
         return res.status(400).json({
           success: false,
-          error: 'Missing required customer data',
+          error: 'Manca qualche dato: controlla i campi qui sopra',
           errors: fieldErrors
         });
       }

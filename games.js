@@ -147,7 +147,7 @@ window.PromoGames = (() => {
       const safePercentage = Math.max(0, Math.min(100, Math.round(percentage)));
       this.progressBar.style.width = `${safePercentage}%`;
       this.progressText.textContent = safePercentage >= this.threshold
-        ? 'Risultato sbloccato.'
+        ? ''
         : 'Continua a grattare';
     }
 
@@ -222,7 +222,7 @@ window.PromoGames = (() => {
       this.resultLayerCtx.textAlign = 'center';
       this.resultLayerCtx.fillStyle = primary;
       this.resultLayerCtx.font = '800 15px Arial';
-      this.resultLayerCtx.fillText('ESITO IN ARRIVO', this.resultLayer.width / 2, 72);
+      this.resultLayerCtx.fillText('Gratta qui', this.resultLayer.width / 2, 72);
       this.resultLayerCtx.fillStyle = '#111827';
       this.resultLayerCtx.font = '900 28px Arial';
       this.resultLayerCtx.fillText('…', this.resultLayer.width / 2, 130);
