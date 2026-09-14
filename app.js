@@ -343,9 +343,11 @@ function showResult() {
     document.querySelector('.game-shell')?.classList.add('outcome-won');
     if (isScratch) {
       const prizeLabel = `${gameData.prize?.emoji || ''} ${gameData.prize?.name || ''}`.trim();
-      resultDiv.innerHTML = prizeLabel
+      const winLabel = '<p class="result-stamp result-win-label">Hai vinto!</p>';
+      const prizeHtml = prizeLabel
         ? `<p class="result-stamp result-prize">${escapeHtml(prizeLabel)}</p>`
         : '';
+      resultDiv.innerHTML = winLabel + prizeHtml;
       resultDiv.className = 'result winner';
     }
     finalNotice.textContent = 'Mostra la card in negozio per ritirare il premio.';

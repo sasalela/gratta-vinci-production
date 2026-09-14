@@ -956,9 +956,23 @@ body.game-type-scratch_card .result-stamp {
   padding: 14px 12px;
 }
 
-body.game-type-scratch_card .result-prize {
+body.game-type-scratch_card .result.winner .result-stamp {
+  padding: 10px 10px;
+}
+
+body.game-type-scratch_card .result-win-label {
   color: var(--brand-primary);
-  font-size: clamp(1.55rem, 7vw, 2.15rem);
+  font-size: clamp(1.12rem, 5vw, 1.5rem);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  margin: 0 auto 8px;
+}
+
+body.game-type-scratch_card .result-prize {
+  animation-delay: 150ms;
+  color: var(--brand-primary);
+  font-size: clamp(1.45rem, 6.5vw, 2.05rem);
   font-weight: 900;
   letter-spacing: -0.02em;
   line-height: 1.12;
@@ -1015,17 +1029,47 @@ body.game-type-scratch_card .final-notice {
   margin-top: 6px;
 }
 
+/* Riga finale su fondo brand: base chiara + inchiostro scuro (≥4.5:1) */
+body.game-type-scratch_card .game-shell.game-revealed .final-notice {
+  background: #fffdf8;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 28%, #d6d3cd);
+  border-radius: 12px;
+  box-shadow: 0 2px 0 rgba(15, 23, 42, 0.1);
+  color: #111827;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 6px auto 0;
+  max-width: 100%;
+  padding: 10px 12px;
+}
+
 body.game-type-scratch_card .game-shell.game-revealed.outcome-won #scratchCanvas,
 body.game-type-scratch_card .game-shell.game-revealed.outcome-won .paper-ticket-lamina {
   display: none;
 }
 
 body.game-type-scratch_card .game-shell.game-revealed.outcome-won .paper-ticket {
+  margin-bottom: 6px;
+}
+
+body.game-type-scratch_card .game-shell.game-revealed.outcome-won .paper-ticket-header {
+  padding: 10px 12px 8px;
+}
+
+body.game-type-scratch_card .game-shell.game-revealed.outcome-won .result {
   margin-bottom: 8px;
+  padding: 8px 10px 10px;
 }
 
 body.game-type-scratch_card .game-shell.game-revealed.outcome-won #voucherCanvas {
-  max-height: min(28vh, 200px);
+  max-height: min(22vh, 168px);
+  margin-bottom: 8px;
+}
+
+body.game-type-scratch_card .game-shell.game-revealed.outcome-won #downloadVoucherBtn {
+  min-height: 44px;
+  padding: 10px 14px;
 }
 
 body.game-type-scratch_card .game-shell.game-revealed.outcome-lost .paper-ticket-lamina {
