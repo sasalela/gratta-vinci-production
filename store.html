@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pannello Negozio — Gratta & Vinci</title>
-  <link rel="stylesheet" href="store.css?v=3.0.0">
+  <link rel="stylesheet" href="store.css?v=3.0.1">
 </head>
 <body>
   <main class="page">
@@ -54,7 +54,7 @@
 
       <div id="appError" class="message error hidden"></div>
       <div id="appSuccess" class="message success hidden"></div>
-      <div id="alertsList" class="alerts"></div>
+      <div id="alertsList" class="alerts hidden"></div>
 
       <section id="subscriptionBanner" class="subscription-banner">
         <div>
@@ -71,7 +71,7 @@
         <article id="activePromoCard" class="promo-hero card">
           <!-- filled by JS -->
         </article>
-        <section class="other-campaigns">
+        <section id="otherCampaignsSection" class="other-campaigns hidden">
           <h2 class="section-title">Altre campagne</h2>
           <div id="otherCampaigns" class="other-list"></div>
         </section>
@@ -359,7 +359,7 @@
     </section>
   </main>
 
-  <script src="store-logic.js?v=3.0.0"></script>
-  <script src="store.js?v=3.0.0"></script>
+  <script src="store-logic.js?v=3.0.1"></script>
+  <script src="store.js?v=3.0.1"></script>
 </body>
 </html>

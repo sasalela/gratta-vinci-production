@@ -8,6 +8,8 @@ const ITALIAN_MONTHS = [
 ];
 
 const DEFAULT_LOSE_MESSAGE = 'Niente premio oggi — ci vediamo alla prossima!';
+const DEFAULT_PRIMARY_COLOR = '#0f766e';
+const DEFAULT_SECONDARY_COLOR = '#134e4a';
 
 function slugify(value) {
   return String(value || '')
@@ -138,6 +140,131 @@ function storeInitials(name) {
   return parts.slice(0, 2).map((p) => p[0].toUpperCase()).join('');
 }
 
+function isHexColor(value) {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim());
+}
+
+/**
+ * Single normalization point for store API payloads (new or complete).
+ * Fills safe defaults so the panel never reads undefined brand/subscription fields.
+ */
+function normalizeStore(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const name = String(src.name || '').trim() || 'Negozio';
+  return {
+    ...src,
+    id: src.id ?? null,
+    name,
+    slug: String(src.slug || '').trim(),
+    email: src.email == null ? '' : String(src.email),
+    businessType: src.businessType || 'generic',
+    phone: src.phone == null ? '' : String(src.phone),
+    address: src.address == null ? '' : String(src.address),
+    logoUrl: src.logoUrl == null ? '' : String(src.logoUrl),
+    primaryColor: isHexColor(src.primaryColor) ? src.primaryColor.trim() : DEFAULT_PRIMARY_COLOR,
+    secondaryColor: isHexColor(src.secondaryColor) ? src.secondaryColor.trim() : DEFAULT_SECONDARY_COLOR,
+    subscriptionStatus: src.subscriptionStatus || 'trial',
+    subscriptionExpiresAt: src.subscriptionExpiresAt || null
+  };
+}
+
+function normalizeCampaign(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    ...src,
+    id: src.id ?? null,
+    name: String(src.name || '').trim() || 'Promozione',
+    slug: String(src.slug || '').trim(),
+    active: Boolean(src.active),
+    gameType: src.gameType || 'scratch_card',
+    guaranteedWin: Boolean(src.guaranteedWin),
+    description: src.description == null ? '' : String(src.description),
+    prizeItems: Array.isArray(src.prizeItems) ? src.prizeItems : [],
+    customerFields: Array.isArray(src.customerFields) ? src.customerFields : [],
+    stats: src.stats && typeof src.stats === 'object' ? src.stats : {}
+  };
+}
+
+function normalizeCampaigns(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeCampaign);
+}
+
+/**
+ * Normalize /api/store/subscription (or me.subscription). Missing/failed → unavailable.
+ */
+function normalizeSubscription(raw, store, options = {}) {
+  if (options.unavailable || raw == null) {
+    return {
+      status: 'unavailable',
+      expiresAt: null,
+      planName: 'Non disponibile',
+      plans: [],
+      unavailable: true
+    };
+  }
+  const src = typeof raw === 'object' ? raw : {};
+  const status = src.status || store?.subscriptionStatus || 'trial';
+  const expiresAt = src.expiresAt || src.subscriptionExpiresAt || store?.subscriptionExpiresAt || null;
+  return {
+    ...src,
+    status,
+    expiresAt,
+    planName: src.planName || src.plan?.name || (status === 'trial' ? 'Trial' : 'Piano'),
+    plans: Array.isArray(src.plans) ? src.plans : [],
+    unavailable: false
+  };
+}
+
+/**
+ * Normalize the full panel bootstrap payload in one place.
+ * `me` may be `{ store, user, subscription }` or a bare store object.
+ */
+function normalizePanelData({
+  me = null,
+  campaigns = [],
+  participations = [],
+  vouchers = [],
+  alerts = [],
+  subscription = null,
+  subscriptionUnavailable = false
+} = {}) {
+  const meObj = me && typeof me === 'object' ? me : {};
+  const storeRaw = meObj.store && typeof meObj.store === 'object'
+    ? meObj.store
+    : (meObj.name || meObj.slug ? meObj : {});
+  const store = normalizeStore(storeRaw);
+
+  let subscriptionOut;
+  if (subscriptionUnavailable) {
+    subscriptionOut = normalizeSubscription(null, store, { unavailable: true });
+  } else if (subscription != null) {
+    subscriptionOut = normalizeSubscription(subscription, store);
+  } else if (meObj.subscription != null) {
+    subscriptionOut = normalizeSubscription(meObj.subscription, store);
+  } else {
+    subscriptionOut = normalizeSubscription({
+      status: store.subscriptionStatus || 'trial',
+      expiresAt: store.subscriptionExpiresAt || null,
+      planName: 'Trial',
+      plans: Array.isArray(meObj.plans) ? meObj.plans : []
+    }, store);
+  }
+
+  return {
+    store,
+    campaigns: normalizeCampaigns(campaigns),
+    participations: Array.isArray(participations) ? participations : [],
+    vouchers: Array.isArray(vouchers) ? vouchers : [],
+    alerts: Array.isArray(alerts) ? alerts : [],
+    subscription: subscriptionOut,
+    billingPlans: Array.isArray(subscriptionOut.plans) && subscriptionOut.plans.length
+      ? subscriptionOut.plans
+      : (Array.isArray(meObj.plans) ? meObj.plans : []),
+    user: meObj.user || null
+  };
+}
+
 /** Resize image file to max 256px, return data URL (jpeg) under maxBytes. */
 async function resizeLogoFile(file, maxPx = 256, maxBytes = 150 * 1024) {
   if (!file || !file.type || !file.type.startsWith('image/')) {
@@ -176,6 +303,8 @@ const EMOJI_GRID = {
 const StoreLogicExports = {
   ITALIAN_MONTHS,
   DEFAULT_LOSE_MESSAGE,
+  DEFAULT_PRIMARY_COLOR,
+  DEFAULT_SECONDARY_COLOR,
   slugify,
   toDateInputValue,
   addDays,
@@ -187,6 +316,11 @@ const StoreLogicExports = {
   canProceedStep1,
   ensureEndAfterStart,
   storeInitials,
+  normalizeStore,
+  normalizeCampaign,
+  normalizeCampaigns,
+  normalizeSubscription,
+  normalizePanelData,
   resizeLogoFile,
   EMOJI_GRID
 };

@@ -4,6 +4,10 @@
   padding: 0;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.34), transparent 28%),
@@ -11,6 +15,7 @@ body {
   color: #172033;
   font-family: Arial, sans-serif;
   min-height: 100vh;
+  overflow-x: hidden;
   padding: 24px;
 }
 
@@ -18,14 +23,16 @@ body {
   align-items: center;
   display: grid;
   gap: 28px;
-  grid-template-columns: minmax(0, 0.9fr) minmax(360px, 620px);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 620px);
   margin: 0 auto;
   max-width: 1180px;
   min-height: calc(100vh - 48px);
+  width: 100%;
 }
 
 .hero {
   color: #fff;
+  min-width: 0;
 }
 
 .eyebrow {
@@ -70,7 +77,9 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 26px;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+  min-width: 0;
   padding: 26px;
+  width: 100%;
 }
 
 .card h2 {
@@ -95,6 +104,7 @@ select {
   border: 1px solid #d1d5db;
   border-radius: 12px;
   font: inherit;
+  max-width: 100%;
   padding: 12px 13px;
   width: 100%;
 }
@@ -114,6 +124,7 @@ input[type="color"] {
 .form-row {
   display: grid;
   gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .form-row.two {
@@ -185,17 +196,64 @@ button:disabled {
     padding: 14px;
   }
 
-  .register-page,
-  .form-row.two {
-    grid-template-columns: 1fr;
+  .register-page {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
   }
 
-  .register-page {
-    min-height: auto;
+  .form-row.two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hero h1 {
+    font-size: clamp(1.7rem, 8vw, 2.4rem);
+    line-height: 1.05;
+    margin: 8px 0 10px;
+  }
+
+  .hero p {
+    font-size: 0.95rem;
+  }
+
+  .hero-pills {
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .hero-pills span {
+    font-size: 0.8rem;
+    padding: 7px 10px;
   }
 
   .card {
     border-radius: 22px;
-    padding: 20px;
+    padding: 18px;
+  }
+
+  .card h2 {
+    font-size: 1.35rem;
+  }
+
+  button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 390px) {
+  body {
+    padding: 10px;
+  }
+
+  .hero {
+    order: 2;
+  }
+
+  .card {
+    order: 1;
+    padding: 16px;
+  }
+
+  .hero-pills {
+    display: none;
   }
 }

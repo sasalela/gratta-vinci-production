@@ -4,14 +4,16 @@
  */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
-import { readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 const outDir = join(root, 'docs/screenshots/pannello');
+const nuovoDir = join(outDir, 'nuovo');
 mkdirSync(outDir, { recursive: true });
+mkdirSync(nuovoDir, { recursive: true });
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -56,6 +58,22 @@ const demoStore = {
   subscriptionExpiresAt: '2026-12-31'
 };
 
+/** Newly registered store: only name, email, slug — rest absent/null. */
+const newStore = {
+  id: 'n1',
+  name: 'Pasticceria Artigianale Del Borgo',
+  slug: 'pasticceria-borgo',
+  email: 'nuovo@pasticceria.it',
+  logoUrl: null,
+  primaryColor: null,
+  secondaryColor: null,
+  businessType: null,
+  phone: null,
+  address: null,
+  subscriptionStatus: null,
+  subscriptionExpiresAt: null
+};
+
 const demoCampaign = {
   id: 'c1',
   name: 'Promo Settembre',
@@ -79,19 +97,24 @@ const demoCampaign = {
   ]
 };
 
-async function mockApis(page, { campaigns = [demoCampaign] } = {}) {
+async function mockApis(page, {
+  store = demoStore,
+  campaigns = [demoCampaign],
+  subscriptionOk = true,
+  subscription = { status: 'trial', expiresAt: '2026-12-31', planName: 'Trial', plans: [] }
+} = {}) {
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
-    const json = (data) => route.fulfill({
-      status: 200,
+    const json = (data, ok = true) => route.fulfill({
+      status: ok ? 200 : 500,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data })
+      body: JSON.stringify(ok ? { success: true, data } : { success: false, error: 'fail' })
     });
     if (url.includes('/api/auth/login')) {
-      return json({ user: { email: 'demo@bar.it', role: 'store' } });
+      return json({ user: { email: store.email || 'demo@bar.it', role: 'store' } });
     }
-    if (url.includes('/api/store/me')) return json({ store: demoStore });
+    if (url.includes('/api/store/me')) return json({ store });
     if (url.includes('/prizes') && method === 'POST') return json(demoCampaign.prizeItems[0]);
     if (url.match(/\/api\/store\/campaigns\/?$/) && method === 'POST') return json(demoCampaign);
     if (url.includes('/api/store/campaigns')) return json(campaigns);
@@ -99,7 +122,8 @@ async function mockApis(page, { campaigns = [demoCampaign] } = {}) {
     if (url.includes('/api/store/vouchers')) return json([]);
     if (url.includes('/api/store/alerts')) return json([]);
     if (url.includes('/api/store/subscription')) {
-      return json({ status: 'trial', expiresAt: '2026-12-31', planName: 'Trial', plans: [] });
+      if (!subscriptionOk) return json(null, false);
+      return json(subscription);
     }
     if (url.includes('/api/public/qr')) {
       const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -122,6 +146,54 @@ async function checkNoOverflow(page, width) {
   return { width, overflow };
 }
 
+async function checkHeaderLayout(page, width) {
+  await page.setViewportSize({ width, height: 844 });
+  return page.evaluate((w) => {
+    const name = document.getElementById('storeName').getBoundingClientRect();
+    const refresh = document.getElementById('refreshBtn').getBoundingClientRect();
+    const nameUnderButtons = name.top >= refresh.bottom - 2
+      ? false
+      : (name.top > refresh.top + 8 && name.right > refresh.left && name.left < refresh.right);
+    const truncated = document.getElementById('storeName').scrollHeight > 0
+      && getComputedStyle(document.getElementById('storeName')).textOverflow === 'ellipsis';
+    return {
+      width: w,
+      nameUnderButtons,
+      nameBelowActions: name.top >= refresh.bottom - 2 || refresh.top >= name.bottom - 2,
+      truncated,
+      nameHeight: name.height
+    };
+  }, width);
+}
+
+function writeIndexHtml(images) {
+  const figures = images.map((rel) => `
+  <figure>
+    <figcaption>${rel}</figcaption>
+    <img src="${rel}" alt="${rel}" width="390" />
+  </figure>`).join('\n');
+  writeFileSync(join(outDir, 'index.html'), `<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Screenshot pannello</title>
+  <style>
+    body { margin: 0; padding: 24px; background: #e8e8e8; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #222; }
+    h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 24px; }
+    figure { margin: 0 0 32px; padding: 0; }
+    figcaption { font-size: 0.875rem; margin-bottom: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    img { display: block; width: 390px; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
+  </style>
+</head>
+<body>
+  <h1>Screenshot pannello</h1>
+${figures}
+</body>
+</html>
+`);
+}
+
 async function main() {
   const server = await serve();
   const port = server.address().port;
@@ -129,7 +201,11 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage();
   page.setDefaultTimeout(20000);
-  page.on('pageerror', (e) => console.error('PAGEERROR', e.message));
+  const pageErrors = [];
+  page.on('pageerror', (e) => {
+    pageErrors.push(e.message);
+    console.error('PAGEERROR', e.message);
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     sessionStorage.setItem('gv_store_user', JSON.stringify({ email: 'demo@bar.it' }));
@@ -178,13 +254,71 @@ async function main() {
   await page.waitForTimeout(1200);
   await page.screenshot({ path: join(outDir, 'volantino-a4-demo.png'), fullPage: true });
 
-  const reports = [];
+  // ── Negozio appena registrato ───────────────────────────────────────────
+  const newStoreErrors = [];
+  page.removeAllListeners('pageerror');
+  page.on('pageerror', (e) => {
+    newStoreErrors.push(e.message);
+    pageErrors.push(e.message);
+    console.error('PAGEERROR-nuovo', e.message);
+  });
   await page.unroute('**/api/**');
-  await mockApis(page, { campaigns: [] });
+  await page.addInitScript(() => {
+    sessionStorage.setItem('gv_store_user', JSON.stringify({ email: 'nuovo@pasticceria.it' }));
+  });
+  await mockApis(page, {
+    store: newStore,
+    campaigns: [],
+    subscription: { status: 'trial', expiresAt: null, planName: 'Trial', plans: [] }
+  });
+  await page.goto(`${base}/store.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#createPromoBtn');
+  const nuovoSnap = await page.evaluate(() => ({
+    initials: document.getElementById('dashLogo')?.textContent,
+    name: document.getElementById('storeName')?.textContent,
+    subTitle: document.getElementById('subscriptionTitle')?.textContent,
+    createBtn: Boolean(document.getElementById('createPromoBtn')),
+    otherHidden: document.getElementById('otherCampaignsSection')?.classList.contains('hidden'),
+    alertsHidden: document.getElementById('alertsList')?.classList.contains('hidden'),
+    promoText: document.getElementById('activePromoCard')?.innerText || ''
+  }));
+  if (!nuovoSnap.createBtn || !nuovoSnap.promoText.includes('Crea la tua promozione')) {
+    throw new Error(`Negozio nuovo: cruscotto incompleto ${JSON.stringify(nuovoSnap)}`);
+  }
+  if (!nuovoSnap.otherHidden || !nuovoSnap.alertsHidden) {
+    throw new Error(`Negozio nuovo: contenitori vuoti visibili ${JSON.stringify(nuovoSnap)}`);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: join(nuovoDir, 'cruscotto-390.png'), fullPage: true });
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.screenshot({ path: join(nuovoDir, 'cruscotto-320.png'), fullPage: true });
+
+  // subscription fail must still render dashboard
+  await page.unroute('**/api/**');
+  await mockApis(page, { store: newStore, campaigns: [], subscriptionOk: false });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#createPromoBtn');
+  const subFail = await page.evaluate(() => ({
+    subTitle: document.getElementById('subscriptionTitle')?.textContent,
+    subText: document.getElementById('subscriptionText')?.textContent,
+    promoEmpty: !(document.getElementById('activePromoCard')?.innerText || '').trim()
+  }));
+  if (subFail.promoEmpty || /controllo/i.test(subFail.subText || '') || subFail.subTitle === 'Trial attivo') {
+    throw new Error(`Subscription fail UI stuck: ${JSON.stringify(subFail)}`);
+  }
+  await page.screenshot({ path: join(nuovoDir, 'abbonamento-non-disponibile.png'), fullPage: true });
+
+  const reports = [];
+  const headerReports = [];
+  await page.unroute('**/api/**');
+  await mockApis(page, { store: newStore, campaigns: [] });
   await page.goto(`${base}/store.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#createPromoBtn');
   for (const w of [320, 390, 768, 1280]) {
     reports.push(await checkNoOverflow(page, w));
+  }
+  for (const w of [320, 390]) {
+    headerReports.push(await checkHeaderLayout(page, w));
   }
   await page.setViewportSize({ width: 320, height: 844 });
   await page.click('#createPromoBtn');
@@ -195,10 +329,76 @@ async function main() {
   await page.waitForSelector('#wizardStep2:not(.hidden)');
   reports.push({ ...(await checkNoOverflow(page, 320)), view: 'wizard-step2' });
 
-  console.log(JSON.stringify({ outDir, reports }, null, 2));
+  // Register responsive
+  const registerReports = [];
+  for (const w of [320, 390]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.goto(`${base}/register.html`, { waitUntil: 'domcontentloaded' });
+    const reg = await page.evaluate((width) => {
+      const doc = document.documentElement;
+      const rows = [...document.querySelectorAll('.form-row.two')].map((r) => {
+        const styles = getComputedStyle(r);
+        return styles.gridTemplateColumns;
+      });
+      const btn = document.getElementById('registerBtn').getBoundingClientRect();
+      const singleCol = rows.every((cols) => !cols.includes(' ') || cols.split(' ').filter(Boolean).length === 1);
+      return {
+        width,
+        overflowX: doc.scrollWidth > doc.clientWidth + 1,
+        scrollWidth: doc.scrollWidth,
+        clientWidth: doc.clientWidth,
+        singleCol,
+        btnFull: Math.abs(btn.width - (doc.clientWidth - 20)) < 40 || btn.width >= doc.clientWidth * 0.85,
+        rows
+      };
+    }, w);
+    registerReports.push(reg);
+    await page.screenshot({ path: join(nuovoDir, `register-${w}.png`), fullPage: true });
+  }
+
+  writeIndexHtml([
+    'avanzate.png',
+    'cruscotto-attiva.png',
+    'cruscotto-vuoto.png',
+    'passo1.png',
+    'passo2.png',
+    'passo3.png',
+    'volantino-a4-demo.png',
+    'nuovo/cruscotto-320.png',
+    'nuovo/cruscotto-390.png',
+    'nuovo/abbonamento-non-disponibile.png',
+    'nuovo/register-320.png',
+    'nuovo/register-390.png'
+  ]);
+
+  console.log(JSON.stringify({
+    outDir,
+    nuovoSnap,
+    subFail,
+    reports,
+    headerReports,
+    registerReports,
+    newStoreErrors,
+    pageErrors
+  }, null, 2));
+
   const badOverflow = reports.filter((r) => r.overflow.overflowX);
+  const badHeader = headerReports.filter((r) => r.nameUnderButtons || r.truncated);
+  const badRegister = registerReports.filter((r) => r.overflowX || !r.singleCol || !r.btnFull);
   if (badOverflow.length) {
     console.error('OVERFLOW-X detected', badOverflow);
+    process.exitCode = 1;
+  }
+  if (badHeader.length) {
+    console.error('HEADER layout bad', badHeader);
+    process.exitCode = 1;
+  }
+  if (badRegister.length) {
+    console.error('REGISTER responsive bad', badRegister);
+    process.exitCode = 1;
+  }
+  if (newStoreErrors.length || pageErrors.length) {
+    console.error('Console/page errors', { newStoreErrors, pageErrors });
     process.exitCode = 1;
   }
 

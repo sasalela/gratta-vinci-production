@@ -1,5 +1,8 @@
 const USER_KEY = 'gv_store_user';
 const SL = globalThis.StoreLogic;
+if (!SL || typeof SL.storeInitials !== 'function' || typeof SL.normalizePanelData !== 'function') {
+  throw new Error('StoreLogic non disponibile: caricare store-logic.js prima di store.js.');
+}
 
 const loginSection = document.getElementById('loginSection');
 const appSection = document.getElementById('appSection');
@@ -154,13 +157,30 @@ function isStoreOperational() {
 
 function getSubscriptionInfo(store, subscription) {
   const sub = subscription || {};
+  if (sub.unavailable || sub.status === 'unavailable') {
+    return {
+      status: 'unavailable',
+      expiresAt: null,
+      daysLeft: null,
+      operational: true,
+      planName: 'Non disponibile',
+      unavailable: true
+    };
+  }
   const status = sub.status || store?.subscriptionStatus || 'trial';
   const expiresAt = sub.expiresAt || store?.subscriptionExpiresAt;
   const daysLeft = expiresAt
     ? Math.ceil((new Date(expiresAt) - Date.now()) / (1000 * 60 * 60 * 24))
     : null;
   const operational = status === 'active' || status === 'trial' || (daysLeft != null && daysLeft >= 0 && status !== 'expired');
-  return { status, expiresAt, daysLeft, operational, planName: sub.planName || sub.plan?.name || 'Trial' };
+  return {
+    status,
+    expiresAt,
+    daysLeft,
+    operational,
+    planName: sub.planName || sub.plan?.name || 'Trial',
+    unavailable: false
+  };
 }
 
 function resolveEffectiveCustomerFields(raw) {
@@ -204,7 +224,9 @@ function switchView(name) {
 function renderDashBrand() {
   const store = state.store;
   if (!store) return;
-  storeName.textContent = store.name || 'Negozio';
+  storeName.textContent = store.name;
+  document.documentElement.style.setProperty('--brand', store.primaryColor);
+  document.documentElement.style.setProperty('--brand-2', store.secondaryColor);
   const logoEl = document.getElementById('dashLogo');
   if (store.logoUrl) {
     logoEl.innerHTML = `<img src="${escapeHtml(store.logoUrl)}" alt="">`;
@@ -267,9 +289,12 @@ function renderDashboard() {
   }
 
   const others = state.campaigns.filter((c) => !primary || c.id !== primary.id);
+  const otherSection = document.getElementById('otherCampaignsSection');
   if (!others.length) {
-    otherCampaigns.innerHTML = '<p class="muted">Nessun’altra campagna.</p>';
+    otherCampaigns.innerHTML = '';
+    otherSection?.classList.add('hidden');
   } else {
+    otherSection?.classList.remove('hidden');
     otherCampaigns.innerHTML = others.map((c) => `
       <article class="other-card">
         <div>
@@ -726,13 +751,26 @@ function renderVouchers(rows) {
 }
 
 function renderAlerts(rows) {
-  alertsList.innerHTML = rows.slice(0, 5).map((alert) => (
+  const list = Array.isArray(rows) ? rows.slice(0, 5) : [];
+  if (!list.length) {
+    alertsList.innerHTML = '';
+    alertsList.classList.add('hidden');
+    return;
+  }
+  alertsList.classList.remove('hidden');
+  alertsList.innerHTML = list.map((alert) => (
     `<div class="alert ${alert.readByStore ? '' : 'unread'}">${escapeHtml(alert.message)} <small>${formatDate(alert.createdAt)}</small></div>`
   )).join('');
 }
 
 function renderSubscriptionBanner() {
   const info = getSubscriptionInfo(state.store, state.subscription);
+  if (info.unavailable) {
+    subscriptionTitle.textContent = 'Non disponibile';
+    subscriptionText.textContent = 'Stato abbonamento non disponibile.';
+    subscriptionDays.textContent = '—';
+    return;
+  }
   subscriptionTitle.textContent = info.operational
     ? (info.status === 'trial' ? 'Prova attiva' : 'Piano attivo')
     : 'Abbonamento da rinnovare';
@@ -775,13 +813,14 @@ async function requestPlanUpgrade(planId) {
 }
 
 function populateProfileForm(store) {
-  profileName.value = store.name || '';
-  profileBusinessType.value = store.businessType || 'generic';
-  profilePhone.value = store.phone || '';
-  profileAddress.value = store.address || '';
-  profileLogoUrl.value = store.logoUrl || '';
-  profilePrimaryColor.value = store.primaryColor || '#0f766e';
-  profileSecondaryColor.value = store.secondaryColor || '#134e4a';
+  const s = SL.normalizeStore(store);
+  profileName.value = store?.name ? s.name : (s.name === 'Negozio' ? '' : s.name);
+  profileBusinessType.value = s.businessType;
+  profilePhone.value = s.phone;
+  profileAddress.value = s.address;
+  profileLogoUrl.value = s.logoUrl;
+  profilePrimaryColor.value = s.primaryColor;
+  profileSecondaryColor.value = s.secondaryColor;
   renderProfilePreview();
 }
 
@@ -813,8 +852,8 @@ async function saveProfile(event) {
         secondaryColor: profileSecondaryColor.value
       })
     });
-    state.store = store;
-    populateProfileForm(store);
+    state.store = SL.normalizeStore(store);
+    populateProfileForm(state.store);
     renderDashBrand();
     showSuccess('Profilo salvato.');
   } catch (error) {
@@ -957,26 +996,49 @@ async function showApp() {
   await loadAll();
 }
 
+async function settledData(promise) {
+  try {
+    return { ok: true, value: await promise };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 async function loadAll() {
   clearError(appError);
   try {
-    const [me, campaigns, participations, vouchers, alerts, subscription] = await Promise.all([
-      api('/api/store/me'),
-      api('/api/store/campaigns'),
-      api('/api/store/participations'),
-      api('/api/store/vouchers'),
-      api('/api/store/alerts'),
-      api('/api/store/subscription')
+    const [meRes, campaignsRes, participationsRes, vouchersRes, alertsRes, subscriptionRes] = await Promise.all([
+      settledData(api('/api/store/me')),
+      settledData(api('/api/store/campaigns')),
+      settledData(api('/api/store/participations')),
+      settledData(api('/api/store/vouchers')),
+      settledData(api('/api/store/alerts')),
+      settledData(api('/api/store/subscription'))
     ]);
-    state.store = me.store || me;
-    state.campaigns = campaigns || [];
-    state.participations = participations || [];
-    state.vouchers = vouchers || [];
-    state.alerts = alerts || [];
-    state.subscription = subscription;
-    state.billingPlans = subscription?.plans || me.plans || [];
+
+    if (!meRes.ok) {
+      throw meRes.error || new Error('Negozio non disponibile.');
+    }
+
+    const panel = SL.normalizePanelData({
+      me: meRes.value,
+      campaigns: campaignsRes.ok ? campaignsRes.value : [],
+      participations: participationsRes.ok ? participationsRes.value : [],
+      vouchers: vouchersRes.ok ? vouchersRes.value : [],
+      alerts: alertsRes.ok ? alertsRes.value : [],
+      subscription: subscriptionRes.ok ? subscriptionRes.value : null,
+      subscriptionUnavailable: !subscriptionRes.ok
+    });
+
+    state.store = panel.store;
+    state.campaigns = panel.campaigns;
+    state.participations = panel.participations;
+    state.vouchers = panel.vouchers;
+    state.alerts = panel.alerts;
+    state.subscription = panel.subscription;
+    state.billingPlans = panel.billingPlans;
     const user = JSON.parse(sessionStorage.getItem(USER_KEY) || '{}');
-    userLabel.textContent = user.email || '';
+    userLabel.textContent = user.email || panel.user?.email || '';
     populateProfileForm(state.store);
     renderDashboard();
     renderParticipations(state.participations);

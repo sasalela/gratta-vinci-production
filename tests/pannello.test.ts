@@ -27,6 +27,63 @@ const demoGuaranteed = {
   guaranteedWin: true
 };
 
+describe('pannello — normalizzazione negozio nuovo', () => {
+  it('input minimo → iniziali, colori default, campagne []', () => {
+    const panel = StoreLogic.normalizePanelData({
+      me: {
+        store: {
+          id: 'n1',
+          name: 'Bar Nuovo',
+          slug: 'bar-nuovo',
+          email: 'nuovo@bar.it',
+          logoUrl: null,
+          primaryColor: null,
+          secondaryColor: null,
+          businessType: null,
+          phone: null,
+          address: null,
+          subscriptionStatus: null,
+          subscriptionExpiresAt: null
+        }
+      },
+      campaigns: null,
+      subscription: { status: 'trial', expiresAt: '2026-12-31', planName: 'Trial', plans: [] }
+    });
+
+    assert.equal(panel.store.name, 'Bar Nuovo');
+    assert.equal(StoreLogic.storeInitials(panel.store.name), 'BN');
+    assert.equal(panel.store.primaryColor, StoreLogic.DEFAULT_PRIMARY_COLOR);
+    assert.equal(panel.store.secondaryColor, StoreLogic.DEFAULT_SECONDARY_COLOR);
+    assert.equal(panel.store.logoUrl, '');
+    assert.deepEqual(panel.campaigns, []);
+    assert.equal(panel.subscription.status, 'trial');
+    assert.equal(panel.subscription.unavailable, false);
+  });
+
+  it('rosso: payload assente non lascia campi brand undefined', () => {
+    const panel = StoreLogic.normalizePanelData({});
+    assert.equal(panel.store.name, 'Negozio');
+    assert.equal(StoreLogic.storeInitials(panel.store.name), 'N');
+    assert.ok(panel.store.primaryColor);
+    assert.ok(panel.store.secondaryColor);
+    assert.equal(panel.store.logoUrl, '');
+    assert.deepEqual(panel.campaigns, []);
+    assert.notEqual(panel.store.primaryColor, undefined);
+    assert.notEqual(panel.store.name, undefined);
+  });
+
+  it('subscription fallita → Non disponibile, non trial eterno', () => {
+    const panel = StoreLogic.normalizePanelData({
+      me: { store: { name: 'Bar Nuovo', slug: 'bar-nuovo', email: 'a@b.it' } },
+      campaigns: [],
+      subscriptionUnavailable: true
+    });
+    assert.equal(panel.subscription.unavailable, true);
+    assert.equal(panel.subscription.planName, 'Non disponibile');
+    assert.equal(StoreLogic.storeInitials(panel.store.name), 'BN');
+  });
+});
+
 describe('pannello — premio principale', () => {
   it('sceglie il premio attivo con probabilità più bassa', () => {
     const main = ContentLogic.getMainPrize(demoCampaign);
