@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Verify wheel labels</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 16px; }
+    .row { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+    canvas { border: 1px solid #ccc; }
+    pre { background: #f6f8fa; padding: 12px; overflow: auto; max-width: 100%; }
+    .card-fixture {
+      width: 280px;
+      border: 3px solid #667eea;
+      border-radius: 0 0 18px 18px;
+      padding: 10px 12px 14px;
+      background: linear-gradient(180deg, #fffaf0 0%, #f4efe4 100%);
+      box-sizing: border-box;
+    }
+    .result-stamp {
+      border: 2px solid #667eea;
+      border-radius: 14px;
+      padding: 10px;
+      box-sizing: border-box;
+      max-width: 100%;
+      overflow: hidden;
+      width: 100%;
+    }
+    .result-prize {
+      color: #667eea;
+      font-size: clamp(1.05rem, 4.8vw, 2.05rem);
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      padding-inline: 2px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Wheel label verification</h1>
+  <div class="row">
+    <div>
+      <h2>Viewport 390</h2>
+      <div id="wrap390" style="width:390px;border:1px dashed #999;padding:8px;box-sizing:border-box;">
+        <canvas id="c390" width="320" height="320" style="width:min(100%,280px);height:auto;display:block;margin:0 auto;"></canvas>
+      </div>
+    </div>
+    <div>
+      <h2>Viewport 320</h2>
+      <div id="wrap320" style="width:320px;border:1px dashed #999;padding:8px;box-sizing:border-box;">
+        <canvas id="c320" width="320" height="320" style="width:min(100%,280px);height:auto;display:block;margin:0 auto;"></canvas>
+      </div>
+    </div>
+    <div>
+      <h2>Card names</h2>
+      <div class="card-fixture" id="cardSconto"><div class="result-stamp"><p class="result-prize">🏷️ Sconto 30%</p></div></div>
+      <div class="card-fixture" id="cardTaglio" style="margin-top:8px"><div class="result-stamp"><p class="result-prize">💇 Taglio Capelli Gratis</p></div></div>
+      <div class="card-fixture" id="cardLong" style="margin-top:8px"><div class="result-stamp"><p class="result-prize">🎁 PremioDemoLungoTrentaCharsXX</p></div></div>
+    </div>
+  </div>
+  <pre id="out">running…</pre>
+  <script src="../wheel-visual.js"></script>
+  <script>
+    function parseHex(hex) {
+      const raw = String(hex || '').replace('#', '');
+      if (!/^[0-9a-fA-F]{6}$/.test(raw)) return null;
+      return {
+        r: parseInt(raw.slice(0, 2), 16),
+        g: parseInt(raw.slice(2, 4), 16),
+        b: parseInt(raw.slice(4, 6), 16)
+      };
+    }
+    function mixHex(a, b, t) {
+      const A = parseHex(a);
+      const B = parseHex(b);
+      if (!A || !B) return a || '#667eea';
+      const mix = (from, to) => Math.round(from + (to - from) * t);
+      const toHex = (n) => n.toString(16).padStart(2, '0');
+      return `#${toHex(mix(A.r, B.r))}${toHex(mix(A.g, B.g))}${toHex(mix(A.b, B.b))}`;
+    }
+    function brandWheelPalette(primary, secondary) {
+      return [
+        primary,
+        secondary,
+        mixHex(primary, '#ffffff', 0.28),
+        mixHex(secondary, '#111827', 0.18),
+        mixHex(primary, secondary, 0.5),
+        mixHex(secondary, '#ffffff', 0.32),
+        mixHex(primary, '#111827', 0.22),
+        mixHex(secondary, primary, 0.4)
+      ];
+    }
+
+    const DEMO_PRIZES = [
+      { id: 'demo', name: 'Premio Demo', emoji: '🎫', winProbability: 80, available: true },
+      { id: 'birra', name: 'Birra gratis', emoji: '🍺', winProbability: 5, available: true },
+      { id: 's30', name: 'Sconto 30%', emoji: '🏷️', winProbability: 20, available: true },
+      { id: 's10', name: 'Sconto 10%', emoji: '💸', winProbability: 75, available: true }
+    ];
+
+    function drawWheel(canvas, segments, rotation) {
+      const ctx = canvas.getContext('2d');
+      const center = canvas.width / 2;
+      const radius = center - 14;
+      const slice = (Math.PI * 2) / segments.length;
+      const displayWidth = canvas.getBoundingClientRect().width || 280;
+      const minFont = Math.max(
+        WheelVisual.wheelLabelMinFont(displayWidth, canvas.width),
+        WheelVisual.wheelLabelMinFont(280, canvas.width)
+      );
+      const baseFont = Math.max(minFont, segments.length > 6 ? 15 : 17);
+      const layouts = [];
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(center, center);
+      ctx.rotate(rotation);
+
+      segments.forEach((segment, index) => {
+        const start = index * slice;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.fillStyle = segment.color;
+        ctx.arc(0, 0, radius, start, start + slice);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        const metrics = WheelVisual.segmentLabelMetrics(radius, segments.length, baseFont);
+        const contrast = WheelVisual.contrastingTextColor(segment.color);
+        const fitted = WheelVisual.fitWheelSegmentLabel(
+          ctx,
+          segment.label,
+          metrics.maxWidth,
+          metrics.maxHeight,
+          baseFont,
+          minFont
+        );
+
+        const mid = start + slice / 2;
+        const twoPi = Math.PI * 2;
+        const screenAngle = ((rotation + mid) % twoPi + twoPi) % twoPi;
+        const flip = screenAngle > Math.PI / 2 && screenAngle < Math.PI * 1.5;
+
+        ctx.save();
+        ctx.rotate(mid);
+        if (flip) ctx.rotate(Math.PI);
+        const x = flip ? -metrics.textR : metrics.textR;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = contrast.color;
+        ctx.font = `700 ${fitted.fontSize}px Arial, Helvetica, sans-serif`;
+        const lineHeight = fitted.fontSize * 1.12;
+        const blockHeight = lineHeight * (fitted.lines.length - 1);
+        fitted.lines.forEach((line, i) => {
+          ctx.fillText(line, x, -blockHeight / 2 + i * lineHeight);
+        });
+        ctx.restore();
+
+        const cssFont = fitted.fontSize * (displayWidth / canvas.width);
+        layouts.push({
+          index,
+          prizeName: segment.prizeName,
+          label: segment.label,
+          lines: fitted.lines,
+          lineCount: fitted.lines.length,
+          fontSizeCanvas: fitted.fontSize,
+          fontSizeCss: Number(cssFont.toFixed(2)),
+          truncated: fitted.truncated,
+          contrast: Number(contrast.ratio.toFixed(2)),
+          textColor: contrast.color,
+          background: segment.color,
+          flip
+        });
+      });
+
+      ctx.restore();
+      return {
+        displayWidth,
+        minFont,
+        baseFont,
+        scrollWidth: canvas.parentElement.scrollWidth,
+        clientWidth: canvas.parentElement.clientWidth,
+        layouts
+      };
+    }
+
+    function cardOverflow(el) {
+      const prize = el.querySelector('.result-prize');
+      const stamp = el.querySelector('.result-stamp');
+      return {
+        text: prize.textContent,
+        prizeScrollW: prize.scrollWidth,
+        prizeClientW: prize.clientWidth,
+        stampScrollW: stamp.scrollWidth,
+        stampClientW: stamp.clientWidth,
+        overflows: prize.scrollWidth > stamp.clientWidth + 1 || stamp.scrollWidth > el.clientWidth + 1
+      };
+    }
+
+    const built = WheelVisual.buildWheelSegments(DEMO_PRIZES, { guaranteedWin: true });
+    const palette = brandWheelPalette('#667eea', '#764ba2');
+    const segments = built.segments.map((segment, index) => ({
+      ...segment,
+      color: palette[index % palette.length]
+    }));
+
+    const report390 = drawWheel(document.getElementById('c390'), segments, 0);
+    const report320 = drawWheel(document.getElementById('c320'), segments, 0);
+
+    const cards = {
+      sconto: cardOverflow(document.getElementById('cardSconto')),
+      taglio: cardOverflow(document.getElementById('cardTaglio')),
+      long30: cardOverflow(document.getElementById('cardLong'))
+    };
+
+    const allLayouts = [...report390.layouts, ...report320.layouts];
+    const anyTruncated = allLayouts.some((row) => row.truncated || /\u2026|\.\.\.$/.test(row.lines.join('')));
+    const contrastFail = allLayouts.filter((row) => row.contrast < 4.5);
+    const hScroll390 = report390.scrollWidth > report390.clientWidth + 1;
+    const hScroll320 = report320.scrollWidth > report320.clientWidth + 1;
+
+    const summary = {
+      ok: built.ok && !anyTruncated && contrastFail.length === 0 && !hScroll390 && !hScroll320 && !cards.sconto.overflows && !cards.taglio.overflows && !cards.long30.overflows,
+      segmentCount: segments.length,
+      uniqueLabels: [...new Set(segments.map((s) => s.label))],
+      report390,
+      report320,
+      cards,
+      anyTruncated,
+      contrastFail,
+      hScroll390,
+      hScroll320
+    };
+
+    document.getElementById('out').textContent = JSON.stringify(summary, null, 2);
+    window.__WHEEL_VERIFY__ = summary;
+  </script>
+</body>
+</html>
