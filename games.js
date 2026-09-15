@@ -589,6 +589,8 @@ window.PromoGames = (() => {
       this.spinSpeed = 0.28;
       this.rafId = null;
       this.spinTimeoutId = null;
+      this.destroyed = false;
+      this.segmentBuild = null;
       this.handlers = {};
     }
 
@@ -628,77 +630,30 @@ window.PromoGames = (() => {
       this.statusEl = this.container.querySelector('#wheelStatus');
       this.segments = this.buildSegments();
       if (!this.segments.length) {
-        this.statusEl.textContent = 'Nessun premio disponibile al momento.';
+        const blocked = this.segmentBuild?.reason === 'too_many_prizes';
+        this.statusEl.textContent = blocked
+          ? 'Troppi premi per la ruota. Contatta il negozio.'
+          : 'Nessun premio disponibile al momento.';
         this.spinBtn.disabled = true;
         return;
       }
-      this.targetRotation = this.getTargetRotation();
       this.drawWheel(this.rotation);
       this.handlers.spinClick = () => this.handleSpinButton();
       this.spinBtn.addEventListener('click', this.handlers.spinClick);
     }
 
-    getWheelPrizes() {
-      const seen = new Set();
-      return (this.context.campaignConfig?.prizes || [])
-        .filter((prize) => prize.available !== false)
-        .filter((prize) => {
-          if (!prize.id || seen.has(prize.id)) return false;
-          seen.add(prize.id);
-          return true;
-        })
-        .slice(0, 8);
-    }
-
     buildSegments() {
-      const guaranteedWin = Boolean(this.context.campaignConfig?.guaranteedWin);
-      const availablePrizes = this.getWheelPrizes();
+      const visual = window.WheelVisual;
       const { primary, secondary } = getTicketMeta(this.context.campaignConfig);
       const palette = brandWheelPalette(primary, secondary);
-      const loseLabel = 'Riprova';
-
-      const formatLabel = (prize) => {
-        const raw = `${prize.emoji || ''} ${prize.name}`.trim();
-        return raw.length > 14 ? `${raw.slice(0, 13)}…` : raw;
-      };
-
-      if (guaranteedWin && availablePrizes.length > 0) {
-        return availablePrizes.map((prize, index) => ({
-          label: formatLabel(prize),
-          kind: 'win',
-          prizeId: prize.id,
-          prizeName: prize.name,
-          color: palette[index % palette.length]
-        }));
-      }
-
-      const prizes = availablePrizes.slice(0, 5);
-      const segments = [{ label: loseLabel, kind: 'lose' }];
-      prizes.forEach((prize) => {
-        segments.push({
-          label: formatLabel(prize),
-          kind: 'win',
-          prizeId: prize.id,
-          prizeName: prize.name
-        });
+      this.segmentBuild = visual.buildWheelSegments(this.context.campaignConfig?.prizes || [], {
+        guaranteedWin: Boolean(this.context.campaignConfig?.guaranteedWin)
       });
-
-      while (segments.length < 6) {
-        segments.push({ label: loseLabel, kind: 'lose' });
-      }
-
-      return segments.slice(0, 8).map((segment, index) => ({
+      if (!this.segmentBuild.ok) return [];
+      return this.segmentBuild.segments.map((segment, index) => ({
         ...segment,
         color: palette[index % palette.length]
       }));
-    }
-
-    getTargetRotation() {
-      if (!this.segments.length) return 0;
-      const slice = (Math.PI * 2) / this.segments.length;
-      const targetIndex = Math.floor(Math.random() * this.segments.length);
-      const segmentCenter = targetIndex * slice + slice / 2;
-      return Math.PI * 1.5 - segmentCenter;
     }
 
     drawWheel(rotation) {
@@ -760,25 +715,36 @@ window.PromoGames = (() => {
     }
 
     handleSpinButton() {
-      if (this.finished || !this.segments.length) return;
-      if (!this.spinning) {
-        this.startSpinning();
-        return;
-      }
-      if (!this.stopping) {
-        this.stopSpinning();
-      }
+      if (this.finished || this.spinning || !this.segments.length) return;
+      this.startSpinning();
     }
 
     startSpinning() {
       this.cancelAnimation();
       this.spinning = true;
       this.stopping = false;
+      this.revealSettled = false;
+      this.revealOutcome = null;
+      this.spinStartedAt = performance.now();
       this.context.onPlayStart?.();
-      this.spinBtn.textContent = 'STOP!';
-      this.spinBtn.classList.add('wheel-stop-btn');
-      this.statusEl.textContent = 'La ruota gira… premi STOP quando vuoi!';
+      this.spinBtn.disabled = true;
+      this.spinBtn.classList.remove('wheel-stop-btn');
+      this.spinBtn.textContent = 'La ruota gira…';
+      this.statusEl.textContent = 'La ruota gira…';
       this.lastFrame = performance.now();
+
+      const fetchReveal = this.context.fetchReveal;
+      if (typeof fetchReveal === 'function') {
+        Promise.resolve(fetchReveal()).then((outcome) => {
+          if (this.destroyed) return;
+          this.revealOutcome = outcome;
+          this.revealSettled = true;
+          this.maybeBeginStop();
+        });
+      } else {
+        this.revealOutcome = { ok: false, error: 'Impossibile ottenere il risultato.' };
+        this.revealSettled = true;
+      }
 
       const tick = (now) => {
         if (!this.spinning || this.stopping) return;
@@ -786,16 +752,20 @@ window.PromoGames = (() => {
         this.lastFrame = now;
         this.rotation += this.spinSpeed * (delta / 16);
         this.drawWheel(this.rotation);
+        this.maybeBeginStop();
+        if (this.stopping || this.finished) return;
         this.rafId = requestAnimationFrame(tick);
       };
 
       this.rafId = requestAnimationFrame(tick);
-      this.spinTimeoutId = setTimeout(() => {
-        if (this.spinning && !this.stopping && !this.finished) {
-          this.statusEl.textContent = 'Tempo scaduto: la ruota si ferma da sola.';
-          this.stopSpinning();
-        }
-      }, 9000);
+    }
+
+    maybeBeginStop() {
+      if (this.destroyed || this.stopping || this.finished || !this.spinning) return;
+      if (!this.revealSettled) return;
+      const elapsed = performance.now() - (this.spinStartedAt || 0);
+      if (elapsed < 2500) return;
+      this.beginStop();
     }
 
     computeStopRotation(current, target, minTurns = 2.5) {
@@ -809,23 +779,41 @@ window.PromoGames = (() => {
       return final;
     }
 
-    stopSpinning() {
-      if (this.stopping || this.finished) return;
+    beginStop() {
+      if (this.stopping || this.finished || this.destroyed) return;
       this.stopping = true;
       this.cancelAnimation();
       this.spinBtn.disabled = true;
       this.spinBtn.classList.remove('wheel-stop-btn');
       this.spinBtn.textContent = 'Si ferma…';
-      this.statusEl.textContent = 'Stai fermando la ruota…';
+      this.statusEl.textContent = 'La ruota si sta fermando…';
 
       const startRotation = this.rotation;
-      const finalRotation = this.computeStopRotation(startRotation, this.targetRotation);
-      const duration = 2200;
+      const outcome = this.revealOutcome;
+      const visual = window.WheelVisual;
+      let targetAngle = startRotation;
+      let matchedSlice = false;
+
+      if (outcome?.ok) {
+        const computed = visual.computeStopAngleFromReveal(this.segments, outcome.data);
+        if (computed.ok) {
+          targetAngle = computed.targetAngle;
+          matchedSlice = true;
+        } else {
+          console.info('Ruota: premio senza spicchio', computed.prizeId, computed.segmentPrizeIds);
+          targetAngle = visual.unmatchedBoundaryAngle(this.segments.length);
+        }
+      }
+
+      const finalRotation = outcome?.ok
+        ? this.computeStopRotation(startRotation, targetAngle)
+        : startRotation + Math.PI * 3;
+      const duration = matchedSlice || outcome?.ok ? 2200 : 1400;
       const start = performance.now();
 
       const animate = (now) => {
+        if (this.destroyed) return;
         const progress = Math.min((now - start) / duration, 1);
-        // Decelerazione naturale (ease-out quint), non lineare
         const eased = 1 - Math.pow(1 - progress, 5);
         this.rotation = startRotation + (finalRotation - startRotation) * eased;
         this.drawWheel(this.rotation);
@@ -838,16 +826,19 @@ window.PromoGames = (() => {
         this.finished = true;
         this.spinning = false;
         this.stopping = false;
-        this.statusEl.textContent = 'La ruota si è fermata sul tuo esito.';
-        this.spinBtn.textContent = 'Esito sbloccato';
+        this.statusEl.textContent = outcome?.ok
+          ? 'La ruota si è fermata sul tuo esito.'
+          : 'La ruota si è fermata.';
+        this.spinBtn.textContent = outcome?.ok ? 'Esito sbloccato' : 'Errore';
         this.ticket?.classList.add('is-revealed');
-        this.context.onReveal();
+        this.context.applyRevealResult?.(outcome);
       };
 
       this.rafId = requestAnimationFrame(animate);
     }
 
     destroy() {
+      this.destroyed = true;
       this.cancelAnimation();
       if (this.spinBtn && this.handlers.spinClick) {
         this.spinBtn.removeEventListener('click', this.handlers.spinClick);

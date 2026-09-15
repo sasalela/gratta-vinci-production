@@ -300,12 +300,14 @@ function initGame() {
     gameData,
     campaignConfig,
     onPlayStart: markPlayStarted,
-    onReveal: handleReveal
+    onReveal: handleReveal,
+    fetchReveal,
+    applyRevealResult
   });
   activeGame.start();
 }
 
-async function handleReveal() {
+async function fetchReveal() {
   try {
     const response = await fetch('/api/public/reveal', {
       method: 'POST',
@@ -314,18 +316,31 @@ async function handleReveal() {
     });
     const payload = await response.json();
     if (!response.ok || !payload.success) {
-      setGameUiState('game-revealed');
-      resultDiv.textContent = payload.error || 'Impossibile ottenere il risultato.';
-      resultDiv.className = 'result loser';
-      return;
+      return {
+        ok: false,
+        error: payload.error || 'Impossibile ottenere il risultato.'
+      };
     }
-    gameData = { ...gameData, ...payload.data };
-    showResult();
+    return { ok: true, data: payload.data };
   } catch {
-    setGameUiState('game-revealed');
-    resultDiv.textContent = 'Impossibile contattare il server. Riprova più tardi.';
-    resultDiv.className = 'result loser';
+    return { ok: false, error: 'Impossibile contattare il server. Riprova più tardi.' };
   }
+}
+
+function applyRevealResult(result) {
+  if (!result || !result.ok) {
+    setGameUiState('game-revealed');
+    resultDiv.textContent = result?.error || 'Impossibile ottenere il risultato.';
+    resultDiv.className = 'result loser';
+    return;
+  }
+  gameData = { ...gameData, ...result.data };
+  showResult();
+}
+
+async function handleReveal() {
+  const result = await fetchReveal();
+  applyRevealResult(result);
 }
 
 /** Schermata di esito unica per tutti i giochi (gratta, ruota, scatole). */
