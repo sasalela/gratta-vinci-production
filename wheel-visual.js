@@ -54,8 +54,194 @@
 
   function formatLabel(entity) {
     if (entity.kind === 'lose') return 'Riprova';
-    const raw = `${entity.emoji || ''} ${entity.prizeName || ''}`.trim();
-    return raw.length > 14 ? `${raw.slice(0, 13)}…` : raw;
+    const name = String(entity.prizeName || '').trim();
+    const emoji = String(entity.emoji || '').trim();
+    if (emoji && name) return `${emoji} ${name}`;
+    return emoji || name || '';
+  }
+
+  function channelToLinear(channel) {
+    const c = channel / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }
+
+  function relativeLuminance(hex) {
+    const raw = String(hex || '').replace('#', '').trim();
+    const full = raw.length === 3
+      ? raw.split('').map((ch) => ch + ch).join('')
+      : raw;
+    if (!/^[0-9a-fA-F]{6}$/.test(full)) return 0;
+    const r = channelToLinear(parseInt(full.slice(0, 2), 16));
+    const g = channelToLinear(parseInt(full.slice(2, 4), 16));
+    const b = channelToLinear(parseInt(full.slice(4, 6), 16));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrastRatio(hexA, hexB) {
+    const l1 = relativeLuminance(hexA);
+    const l2 = relativeLuminance(hexB);
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  /** Testo scuro su fondi chiari, chiaro su scuri — contrasto WCAG ≥ 4.5:1. */
+  function contrastingTextColor(backgroundHex) {
+    const dark = '#111827';
+    const light = '#ffffff';
+    const darkRatio = contrastRatio(dark, backgroundHex);
+    const lightRatio = contrastRatio(light, backgroundHex);
+    if (lightRatio >= darkRatio && lightRatio >= 4.5) {
+      return { color: light, ratio: lightRatio };
+    }
+    if (darkRatio >= 4.5) {
+      return { color: dark, ratio: darkRatio };
+    }
+    return lightRatio >= darkRatio
+      ? { color: light, ratio: lightRatio }
+      : { color: dark, ratio: darkRatio };
+  }
+
+  function wrapWheelLabelLines(ctx, label, maxWidth, maxLines) {
+    const text = String(label || '').trim();
+    if (!text) return [''];
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines = [];
+    let current = '';
+
+    const flushLongWord = (word) => {
+      let chunk = '';
+      for (const ch of Array.from(word)) {
+        const next = chunk + ch;
+        if (chunk && ctx.measureText(next).width > maxWidth) {
+          lines.push(chunk);
+          chunk = ch;
+          if (lines.length >= maxLines) return true;
+        } else {
+          chunk = next;
+        }
+      }
+      if (chunk) {
+        if (lines.length >= maxLines) return true;
+        lines.push(chunk);
+      }
+      return lines.length >= maxLines;
+    };
+
+    for (const word of words) {
+      if (lines.length >= maxLines) break;
+      const test = current ? `${current} ${word}` : word;
+      if (ctx.measureText(test).width <= maxWidth) {
+        current = test;
+        continue;
+      }
+      if (current) {
+        lines.push(current);
+        current = '';
+        if (lines.length >= maxLines) break;
+      }
+      if (ctx.measureText(word).width <= maxWidth) {
+        current = word;
+      } else if (flushLongWord(word)) {
+        current = '';
+        break;
+      }
+    }
+    if (current && lines.length < maxLines) lines.push(current);
+    return lines.length ? lines.slice(0, maxLines) : [''];
+  }
+
+  function ellipsizeWheelLine(ctx, text, maxWidth) {
+    const full = String(text || '');
+    if (ctx.measureText(full).width <= maxWidth) return full;
+    const chars = Array.from(full);
+    for (let len = chars.length - 1; len >= 1; len -= 1) {
+      const candidate = `${chars.slice(0, len).join('').trimEnd()}…`;
+      if (ctx.measureText(candidate).width <= maxWidth) return candidate;
+    }
+    return '…';
+  }
+
+  function linesCoverLabel(label, lines) {
+    const source = String(label || '').replace(/\s+/g, ' ').trim();
+    const joined = lines.join(' ').replace(/\s+/g, ' ').trim();
+    return joined === source;
+  }
+
+  function linesFitWidth(ctx, lines, maxWidth) {
+    return lines.every((line) => ctx.measureText(line).width <= maxWidth + 0.5);
+  }
+
+  /**
+   * Una riga se ci sta; altrimenti due; poi riduce il font fino al minimo;
+   * solo in ultima istanza tronca con "…".
+   */
+  function fitWheelSegmentLabel(ctx, label, maxWidth, maxHeight, baseSize, minSize) {
+    const fontFamily = 'Arial, Helvetica, sans-serif';
+    const source = String(label || '').trim();
+
+    for (let fontSize = baseSize; fontSize >= minSize - 0.001; fontSize -= 0.5) {
+      ctx.font = `700 ${fontSize}px ${fontFamily}`;
+      const lineHeight = fontSize * 1.12;
+
+      if (lineHeight <= maxHeight && ctx.measureText(source).width <= maxWidth) {
+        return { lines: [source], fontSize, truncated: false };
+      }
+
+      if (lineHeight * 2 <= maxHeight + 0.01) {
+        const two = wrapWheelLabelLines(ctx, source, maxWidth, 2);
+        if (linesCoverLabel(source, two) && linesFitWidth(ctx, two, maxWidth)) {
+          return { lines: two, fontSize, truncated: false };
+        }
+      }
+    }
+
+    const fontSize = minSize;
+    ctx.font = `700 ${fontSize}px ${fontFamily}`;
+    const lineHeight = fontSize * 1.12;
+
+    if (lineHeight * 2 <= maxHeight + 0.01) {
+      const two = wrapWheelLabelLines(ctx, source, maxWidth, 2);
+      if (linesCoverLabel(source, two) && linesFitWidth(ctx, two, maxWidth)) {
+        return { lines: two, fontSize, truncated: false };
+      }
+      if (!linesCoverLabel(source, two)) {
+        return {
+          lines: [ellipsizeWheelLine(ctx, source, maxWidth)],
+          fontSize,
+          truncated: true
+        };
+      }
+      const trimmed = two.map((line) => ellipsizeWheelLine(ctx, line, maxWidth));
+      return {
+        lines: trimmed,
+        fontSize,
+        truncated: trimmed.some((line, i) => line !== two[i])
+      };
+    }
+
+    return {
+      lines: [ellipsizeWheelLine(ctx, source, maxWidth)],
+      fontSize,
+      truncated: true
+    };
+  }
+
+  /** Minimo carattere canvas per avere ≥12px CSS a una data larghezza di visualizzazione. */
+  function wheelLabelMinFont(canvasCssWidth, canvasInternalWidth) {
+    const css = Math.max(1, Number(canvasCssWidth) || 280);
+    const internal = Math.max(1, Number(canvasInternalWidth) || 320);
+    return 12 * (internal / css);
+  }
+
+  function segmentLabelMetrics(radius, segmentCount, baseFont) {
+    const slice = (Math.PI * 2) / Math.max(1, segmentCount);
+    const innerR = Math.max(38, radius * 0.28);
+    const outerR = radius - 8;
+    const maxWidth = Math.max(24, outerR - innerR);
+    const textR = (innerR + outerR) / 2;
+    const maxHeight = Math.max(baseFont, 2 * textR * Math.sin(slice / 2) * 0.78);
+    return { slice, innerR, outerR, maxWidth, textR, maxHeight };
   }
 
   function largestRemainderCounts(weights, total) {
@@ -265,6 +451,12 @@
     unmatchedBoundaryAngle,
     pointerLocalAngle,
     segmentIndexAtPointer,
-    isPointerStrictlyInsideSegment
+    isPointerStrictlyInsideSegment,
+    formatLabel,
+    contrastRatio,
+    contrastingTextColor,
+    fitWheelSegmentLabel,
+    wheelLabelMinFont,
+    segmentLabelMetrics
   };
 });

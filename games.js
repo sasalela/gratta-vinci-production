@@ -7,7 +7,7 @@ window.PromoGames = (() => {
     },
     wheel: {
       title: 'Ruota della fortuna',
-      help: 'Premi per far girare la ruota',
+      help: 'Tocca GIRA e scopri il tuo premio',
       playLabel: 'Gira la ruota'
     },
     instant_reveal: {
@@ -140,6 +140,72 @@ window.PromoGames = (() => {
     lines.forEach((textLine, index) => {
       ctx.fillText(textLine, x, y + index * lineHeight);
     });
+  }
+
+  function normalizeWheelAngle(value) {
+    const twoPi = Math.PI * 2;
+    return ((value % twoPi) + twoPi) % twoPi;
+  }
+
+  function drawWheelSegmentLabel(ctx, segment, opts) {
+    const visual = window.WheelVisual;
+    const {
+      start,
+      slice,
+      radius,
+      safeRotation,
+      baseFont,
+      minFont,
+      segmentCount
+    } = opts;
+    const mid = start + slice / 2;
+    const contrast = visual?.contrastingTextColor?.(segment.color)
+      || { color: '#ffffff', ratio: 1 };
+    const metrics = visual?.segmentLabelMetrics?.(radius, segmentCount, baseFont) || {
+      maxWidth: radius * 0.5,
+      textR: radius * 0.62,
+      maxHeight: baseFont * 2
+    };
+
+    const fitted = visual?.fitWheelSegmentLabel?.(
+      ctx,
+      segment.label,
+      metrics.maxWidth,
+      metrics.maxHeight,
+      baseFont,
+      minFont
+    ) || { lines: [segment.label], fontSize: baseFont, truncated: false };
+
+    ctx.save();
+    ctx.rotate(mid);
+    // Convenzione unica: testo lungo il raggio; se lo spicchio è a sinistra (testo capovolto), +180°.
+    const screenAngle = normalizeWheelAngle(safeRotation + mid);
+    const flip = screenAngle > Math.PI / 2 && screenAngle < Math.PI * 1.5;
+    if (flip) ctx.rotate(Math.PI);
+
+    const x = flip ? -metrics.textR : metrics.textR;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = contrast.color;
+    ctx.font = `700 ${fitted.fontSize}px Arial, Helvetica, sans-serif`;
+
+    const lineHeight = fitted.fontSize * 1.12;
+    const lines = fitted.lines;
+    const blockHeight = lineHeight * (lines.length - 1);
+    lines.forEach((line, index) => {
+      const y = -blockHeight / 2 + index * lineHeight;
+      ctx.fillText(line, x, y);
+    });
+    ctx.restore();
+
+    return {
+      lines: fitted.lines,
+      fontSize: fitted.fontSize,
+      truncated: fitted.truncated,
+      color: contrast.color,
+      contrast: contrast.ratio,
+      background: segment.color
+    };
   }
 
   class ScratchGame {
@@ -611,7 +677,7 @@ window.PromoGames = (() => {
           <div class="paper-ticket-lamina paper-ticket-play">
             <div class="wheel-shell">
               <canvas id="wheelCanvas" width="320" height="320" aria-label="Ruota della fortuna"></canvas>
-              <p id="wheelStatus" class="wheel-status">Premi per far girare la ruota.</p>
+              <p id="wheelStatus" class="wheel-status">Tocca GIRA e scopri il tuo premio.</p>
               <button id="spinWheelBtn" type="button" class="primary wheel-spin-btn">Gira la ruota</button>
             </div>
           </div>
@@ -665,12 +731,20 @@ window.PromoGames = (() => {
       const slice = (Math.PI * 2) / this.segments.length;
       const safeRotation = Number.isFinite(rotation) ? rotation : 0;
       const { primary } = getTicketMeta(this.context.campaignConfig);
+      const displayWidth = this.canvas.getBoundingClientRect?.().width || 280;
+      const visual = window.WheelVisual;
+      const minFont = Math.max(
+        visual?.wheelLabelMinFont?.(displayWidth, this.canvas.width) || 12,
+        visual?.wheelLabelMinFont?.(280, this.canvas.width) || 12
+      );
+      const baseFont = Math.max(minFont, this.segments.length > 6 ? 15 : 17);
 
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       ctx.save();
       ctx.translate(center, center);
       ctx.rotate(safeRotation);
 
+      this._lastLabelLayout = [];
       this.segments.forEach((segment, index) => {
         const start = index * slice;
         ctx.beginPath();
@@ -682,13 +756,20 @@ window.PromoGames = (() => {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        ctx.save();
-        ctx.rotate(start + slice / 2);
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `700 ${this.segments.length > 6 ? 10 : 12}px Arial, Helvetica, sans-serif`;
-        ctx.fillText(segment.label, radius * 0.62, 4);
-        ctx.restore();
+        const layout = drawWheelSegmentLabel(ctx, segment, {
+          start,
+          slice,
+          radius,
+          safeRotation,
+          baseFont,
+          minFont,
+          segmentCount: this.segments.length
+        });
+        this._lastLabelLayout.push({
+          prizeName: segment.prizeName,
+          label: segment.label,
+          ...layout
+        });
       });
 
       ctx.restore();
