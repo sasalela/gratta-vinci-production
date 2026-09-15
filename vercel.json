@@ -46,6 +46,10 @@
       "use": "@vercel/static"
     },
     {
+      "src": "store-logic.js",
+      "use": "@vercel/static"
+    },
+    {
       "src": "store.css",
       "use": "@vercel/static"
     },
@@ -55,6 +59,10 @@
     },
     {
       "src": "content.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "content-logic.js",
       "use": "@vercel/static"
     },
     {
@@ -124,6 +132,10 @@
       "dest": "/store.js"
     },
     {
+      "src": "/store-logic.js",
+      "dest": "/store-logic.js"
+    },
+    {
       "src": "/store.css",
       "dest": "/store.css"
     },
@@ -134,6 +146,10 @@
     {
       "src": "/content.js",
       "dest": "/content.js"
+    },
+    {
+      "src": "/content-logic.js",
+      "dest": "/content-logic.js"
     },
     {
       "src": "/content.css",
