@@ -17,6 +17,96 @@ window.PromoGames = (() => {
     }
   };
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function storeInitials(name) {
+    return String(name || 'GV')
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('');
+  }
+
+  function getTicketMeta(campaignConfig) {
+    const store = campaignConfig?.store || {};
+    return {
+      storeName: store.name || 'Gratta & Vinci',
+      campaignName: campaignConfig?.name || 'Gioco promozionale',
+      logoUrl: store.logoUrl || '',
+      primary: store.primaryColor || '#667eea',
+      secondary: store.secondaryColor || '#764ba2'
+    };
+  }
+
+  /** Cornice tagliando condivisa: testata + eventuale istruzione + corpo gioco + micro-testo. */
+  function renderPaperTicket(middleHtml, campaignConfig, reducedMotion, cueText) {
+    const { storeName, campaignName, logoUrl } = getTicketMeta(campaignConfig);
+    const initials = storeInitials(storeName);
+    const logoHtml = logoUrl
+      ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(storeName)}">`
+      : `<span class="paper-ticket-initials" aria-hidden="true">${escapeHtml(initials)}</span>`;
+    const cueHtml = cueText
+      ? `<p class="paper-ticket-cue">${escapeHtml(cueText)}</p>`
+      : '';
+
+    return `
+      <article class="paper-ticket${reducedMotion ? ' paper-ticket--static' : ''}" id="paperTicket">
+        <header class="paper-ticket-header">
+          <div class="paper-ticket-logo">${logoHtml}</div>
+          <div class="paper-ticket-titles">
+            <p class="paper-ticket-store">${escapeHtml(storeName)}</p>
+            <p class="paper-ticket-campaign">${escapeHtml(campaignName)}</p>
+          </div>
+        </header>
+        ${cueHtml}
+        ${middleHtml}
+        <footer class="paper-ticket-footer">
+          <span>Gioco promozionale</span>
+        </footer>
+      </article>
+    `;
+  }
+
+  function parseHexColor(value) {
+    const raw = String(value || '').replace('#', '').trim();
+    const hex = raw.length === 3
+      ? raw.split('').map((ch) => ch + ch).join('')
+      : raw;
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+    return {
+      r: parseInt(hex.slice(0, 2), 16),
+      g: parseInt(hex.slice(2, 4), 16),
+      b: parseInt(hex.slice(4, 6), 16)
+    };
+  }
+
+  function mixHex(a, b, t) {
+    const A = parseHexColor(a);
+    const B = parseHexColor(b);
+    if (!A || !B) return a || '#667eea';
+    const mix = (from, to) => Math.round(from + (to - from) * t);
+    const toHex = (n) => n.toString(16).padStart(2, '0');
+    return `#${toHex(mix(A.r, B.r))}${toHex(mix(A.g, B.g))}${toHex(mix(A.b, B.b))}`;
+  }
+
+  function brandWheelPalette(primary, secondary) {
+    return [
+      primary,
+      secondary,
+      mixHex(primary, '#ffffff', 0.28),
+      mixHex(secondary, '#111827', 0.18),
+      mixHex(primary, secondary, 0.5),
+      mixHex(secondary, '#ffffff', 0.32),
+      mixHex(primary, '#111827', 0.22),
+      mixHex(secondary, primary, 0.4)
+    ];
+  }
+
   function roundedRect(ctx, x, y, width, height, radius) {
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
@@ -75,53 +165,22 @@ window.PromoGames = (() => {
       this.particleLayer = null;
     }
 
-    storeInitials(name) {
-      return String(name || 'GV')
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0].toUpperCase())
-        .join('');
-    }
-
-    escapeHtml(value) {
-      return String(value ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    }
-
     start() {
-      const store = this.context.campaignConfig?.store || {};
-      const storeName = store.name || 'Gratta & Vinci';
-      const campaignName = this.context.campaignConfig?.name || 'Gioco promozionale';
-      const logoUrl = store.logoUrl || '';
-      const initials = this.storeInitials(storeName);
-      const logoHtml = logoUrl
-        ? `<img src="${this.escapeHtml(logoUrl)}" alt="${this.escapeHtml(storeName)}">`
-        : `<span class="paper-ticket-initials" aria-hidden="true">${this.escapeHtml(initials)}</span>`;
-
       this.reducedMotion = Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-
-      this.container.innerHTML = `
-        <article class="paper-ticket${this.reducedMotion ? ' paper-ticket--static' : ''}" id="paperTicket">
-          <header class="paper-ticket-header">
-            <div class="paper-ticket-logo">${logoHtml}</div>
-            <div class="paper-ticket-titles">
-              <p class="paper-ticket-store">${this.escapeHtml(storeName)}</p>
-              <p class="paper-ticket-campaign">${this.escapeHtml(campaignName)}</p>
-            </div>
-          </header>
+      const middleHtml = `
           <div class="paper-ticket-lamina">
             <canvas id="scratchCanvas" width="420" height="236" aria-label="Area da grattare"></canvas>
             <div class="scratch-particles" id="scratchParticles" aria-hidden="true"></div>
           </div>
           <div class="scratch-progress"><div id="scratchProgressBar"></div></div>
           <p id="scratchProgressText" class="scratch-progress-text">Continua a grattare</p>
-          <footer class="paper-ticket-footer">
-            <span>Gioco promozionale</span>
-          </footer>
-        </article>
       `;
+      this.container.innerHTML = renderPaperTicket(
+        middleHtml,
+        this.context.campaignConfig,
+        this.reducedMotion,
+        META.scratch_card.help
+      );
 
       this.ticket = this.container.querySelector('#paperTicket');
       this.canvas = this.container.querySelector('#scratchCanvas');
@@ -530,6 +589,8 @@ window.PromoGames = (() => {
       this.spinSpeed = 0.28;
       this.rafId = null;
       this.spinTimeoutId = null;
+      this.destroyed = false;
+      this.segmentBuild = null;
       this.handlers = {};
     }
 
@@ -545,13 +606,23 @@ window.PromoGames = (() => {
     }
 
     start() {
-      this.container.innerHTML = `
-        <div class="wheel-shell">
-          <canvas id="wheelCanvas" width="320" height="320"></canvas>
-          <p id="wheelStatus" class="wheel-status">Premi per far girare la ruota.</p>
-          <button id="spinWheelBtn" type="button" class="primary wheel-spin-btn">Gira la ruota</button>
-        </div>
+      const reducedMotion = Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+      const middleHtml = `
+          <div class="paper-ticket-lamina paper-ticket-play">
+            <div class="wheel-shell">
+              <canvas id="wheelCanvas" width="320" height="320" aria-label="Ruota della fortuna"></canvas>
+              <p id="wheelStatus" class="wheel-status">Premi per far girare la ruota.</p>
+              <button id="spinWheelBtn" type="button" class="primary wheel-spin-btn">Gira la ruota</button>
+            </div>
+          </div>
       `;
+      this.container.innerHTML = renderPaperTicket(
+        middleHtml,
+        this.context.campaignConfig,
+        reducedMotion,
+        META.wheel.help
+      );
+      this.ticket = this.container.querySelector('#paperTicket');
       this.canvas = this.container.querySelector('#wheelCanvas');
       this.ctx = this.canvas.getContext('2d');
       this.canvas.style.touchAction = 'manipulation';
@@ -559,76 +630,30 @@ window.PromoGames = (() => {
       this.statusEl = this.container.querySelector('#wheelStatus');
       this.segments = this.buildSegments();
       if (!this.segments.length) {
-        this.statusEl.textContent = 'Nessun premio disponibile al momento.';
+        const blocked = this.segmentBuild?.reason === 'too_many_prizes';
+        this.statusEl.textContent = blocked
+          ? 'Troppi premi per la ruota. Contatta il negozio.'
+          : 'Nessun premio disponibile al momento.';
         this.spinBtn.disabled = true;
         return;
       }
-      this.targetRotation = this.getTargetRotation();
       this.drawWheel(this.rotation);
       this.handlers.spinClick = () => this.handleSpinButton();
       this.spinBtn.addEventListener('click', this.handlers.spinClick);
     }
 
-    getWheelPrizes() {
-      const seen = new Set();
-      return (this.context.campaignConfig?.prizes || [])
-        .filter((prize) => prize.available !== false)
-        .filter((prize) => {
-          if (!prize.id || seen.has(prize.id)) return false;
-          seen.add(prize.id);
-          return true;
-        })
-        .slice(0, 8);
-    }
-
     buildSegments() {
-      const guaranteedWin = Boolean(this.context.campaignConfig?.guaranteedWin);
-      const availablePrizes = this.getWheelPrizes();
-      const palette = ['#667eea', '#764ba2', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#14b8a6'];
-      const loseLabel = 'Riprova';
-
-      const formatLabel = (prize) => {
-        const raw = `${prize.emoji || ''} ${prize.name}`.trim();
-        return raw.length > 14 ? `${raw.slice(0, 13)}…` : raw;
-      };
-
-      if (guaranteedWin && availablePrizes.length > 0) {
-        return availablePrizes.map((prize, index) => ({
-          label: formatLabel(prize),
-          kind: 'win',
-          prizeId: prize.id,
-          prizeName: prize.name,
-          color: palette[index % palette.length]
-        }));
-      }
-
-      const prizes = availablePrizes.slice(0, 5);
-      const segments = [{ label: loseLabel, kind: 'lose' }];
-      prizes.forEach((prize) => {
-        segments.push({
-          label: formatLabel(prize),
-          kind: 'win',
-          prizeId: prize.id,
-          prizeName: prize.name
-        });
+      const visual = window.WheelVisual;
+      const { primary, secondary } = getTicketMeta(this.context.campaignConfig);
+      const palette = brandWheelPalette(primary, secondary);
+      this.segmentBuild = visual.buildWheelSegments(this.context.campaignConfig?.prizes || [], {
+        guaranteedWin: Boolean(this.context.campaignConfig?.guaranteedWin)
       });
-
-      while (segments.length < 6) {
-        segments.push({ label: loseLabel, kind: 'lose' });
-      }
-
-      return segments.slice(0, 8).map((segment, index) => ({
+      if (!this.segmentBuild.ok) return [];
+      return this.segmentBuild.segments.map((segment, index) => ({
         ...segment,
         color: palette[index % palette.length]
       }));
-    }
-
-    getTargetRotation() {
-      if (!this.segments.length) return 0;
-      const slice = (Math.PI * 2) / this.segments.length;
-      const targetIndex = Math.floor(Math.random() * this.segments.length);
-      const segmentCenter = targetIndex * slice + slice / 2;
-      return Math.PI * 1.5 - segmentCenter;
     }
 
     drawWheel(rotation) {
@@ -639,6 +664,7 @@ window.PromoGames = (() => {
       const radius = center - 14;
       const slice = (Math.PI * 2) / this.segments.length;
       const safeRotation = Number.isFinite(rotation) ? rotation : 0;
+      const { primary } = getTicketMeta(this.context.campaignConfig);
 
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       ctx.save();
@@ -652,7 +678,7 @@ window.PromoGames = (() => {
         ctx.fillStyle = segment.color;
         ctx.arc(0, 0, radius, start, start + slice);
         ctx.fill();
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
         ctx.lineWidth = 2;
         ctx.stroke();
 
@@ -660,7 +686,7 @@ window.PromoGames = (() => {
         ctx.rotate(start + slice / 2);
         ctx.textAlign = 'center';
         ctx.fillStyle = '#ffffff';
-        ctx.font = `700 ${this.segments.length > 6 ? 10 : 12}px Arial`;
+        ctx.font = `700 ${this.segments.length > 6 ? 10 : 12}px Arial, Helvetica, sans-serif`;
         ctx.fillText(segment.label, radius * 0.62, 4);
         ctx.restore();
       });
@@ -679,35 +705,46 @@ window.PromoGames = (() => {
       ctx.beginPath();
       ctx.arc(center, center, 30, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#cbd5e1';
+      ctx.strokeStyle = mixHex(primary, '#cbd5e1', 0.35);
       ctx.lineWidth = 3;
       ctx.stroke();
-      ctx.fillStyle = '#667eea';
-      ctx.font = '900 14px Arial';
+      ctx.fillStyle = primary;
+      ctx.font = '900 14px Arial, Helvetica, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('GIRA', center, center + 5);
     }
 
     handleSpinButton() {
-      if (this.finished || !this.segments.length) return;
-      if (!this.spinning) {
-        this.startSpinning();
-        return;
-      }
-      if (!this.stopping) {
-        this.stopSpinning();
-      }
+      if (this.finished || this.spinning || !this.segments.length) return;
+      this.startSpinning();
     }
 
     startSpinning() {
       this.cancelAnimation();
       this.spinning = true;
       this.stopping = false;
+      this.revealSettled = false;
+      this.revealOutcome = null;
+      this.spinStartedAt = performance.now();
       this.context.onPlayStart?.();
-      this.spinBtn.textContent = 'STOP!';
-      this.spinBtn.classList.add('wheel-stop-btn');
-      this.statusEl.textContent = 'La ruota gira… premi STOP quando vuoi!';
+      this.spinBtn.disabled = true;
+      this.spinBtn.classList.remove('wheel-stop-btn');
+      this.spinBtn.textContent = 'La ruota gira…';
+      this.statusEl.textContent = 'La ruota gira…';
       this.lastFrame = performance.now();
+
+      const fetchReveal = this.context.fetchReveal;
+      if (typeof fetchReveal === 'function') {
+        Promise.resolve(fetchReveal()).then((outcome) => {
+          if (this.destroyed) return;
+          this.revealOutcome = outcome;
+          this.revealSettled = true;
+          this.maybeBeginStop();
+        });
+      } else {
+        this.revealOutcome = { ok: false, error: 'Impossibile ottenere il risultato.' };
+        this.revealSettled = true;
+      }
 
       const tick = (now) => {
         if (!this.spinning || this.stopping) return;
@@ -715,16 +752,20 @@ window.PromoGames = (() => {
         this.lastFrame = now;
         this.rotation += this.spinSpeed * (delta / 16);
         this.drawWheel(this.rotation);
+        this.maybeBeginStop();
+        if (this.stopping || this.finished) return;
         this.rafId = requestAnimationFrame(tick);
       };
 
       this.rafId = requestAnimationFrame(tick);
-      this.spinTimeoutId = setTimeout(() => {
-        if (this.spinning && !this.stopping && !this.finished) {
-          this.statusEl.textContent = 'Tempo scaduto: la ruota si ferma da sola.';
-          this.stopSpinning();
-        }
-      }, 9000);
+    }
+
+    maybeBeginStop() {
+      if (this.destroyed || this.stopping || this.finished || !this.spinning) return;
+      if (!this.revealSettled) return;
+      const elapsed = performance.now() - (this.spinStartedAt || 0);
+      if (elapsed < 2500) return;
+      this.beginStop();
     }
 
     computeStopRotation(current, target, minTurns = 2.5) {
@@ -738,23 +779,42 @@ window.PromoGames = (() => {
       return final;
     }
 
-    stopSpinning() {
-      if (this.stopping || this.finished) return;
+    beginStop() {
+      if (this.stopping || this.finished || this.destroyed) return;
       this.stopping = true;
       this.cancelAnimation();
       this.spinBtn.disabled = true;
       this.spinBtn.classList.remove('wheel-stop-btn');
       this.spinBtn.textContent = 'Si ferma…';
-      this.statusEl.textContent = 'Stai fermando la ruota…';
+      this.statusEl.textContent = 'La ruota si sta fermando…';
 
       const startRotation = this.rotation;
-      const finalRotation = this.computeStopRotation(startRotation, this.targetRotation);
-      const duration = 2200;
+      const outcome = this.revealOutcome;
+      const visual = window.WheelVisual;
+      let targetAngle = startRotation;
+      let matchedSlice = false;
+
+      if (outcome?.ok) {
+        const computed = visual.computeStopAngleFromReveal(this.segments, outcome.data);
+        if (computed.ok) {
+          targetAngle = computed.targetAngle;
+          matchedSlice = true;
+        } else {
+          console.info('Ruota: premio senza spicchio', computed.prizeId, computed.segmentPrizeIds);
+          targetAngle = visual.unmatchedBoundaryAngle(this.segments.length);
+        }
+      }
+
+      const finalRotation = outcome?.ok
+        ? this.computeStopRotation(startRotation, targetAngle)
+        : startRotation + Math.PI * 3;
+      const duration = matchedSlice || outcome?.ok ? 2200 : 1400;
       const start = performance.now();
 
       const animate = (now) => {
+        if (this.destroyed) return;
         const progress = Math.min((now - start) / duration, 1);
-        const eased = 1 - Math.pow(1 - progress, 4);
+        const eased = 1 - Math.pow(1 - progress, 5);
         this.rotation = startRotation + (finalRotation - startRotation) * eased;
         this.drawWheel(this.rotation);
 
@@ -766,15 +826,19 @@ window.PromoGames = (() => {
         this.finished = true;
         this.spinning = false;
         this.stopping = false;
-        this.statusEl.textContent = 'La ruota si è fermata sul tuo esito.';
-        this.spinBtn.textContent = 'Esito sbloccato';
-        this.context.onReveal();
+        this.statusEl.textContent = outcome?.ok
+          ? 'La ruota si è fermata sul tuo esito.'
+          : 'La ruota si è fermata.';
+        this.spinBtn.textContent = outcome?.ok ? 'Esito sbloccato' : 'Errore';
+        this.ticket?.classList.add('is-revealed');
+        this.context.applyRevealResult?.(outcome);
       };
 
       this.rafId = requestAnimationFrame(animate);
     }
 
     destroy() {
+      this.destroyed = true;
       this.cancelAnimation();
       if (this.spinBtn && this.handlers.spinClick) {
         this.spinBtn.removeEventListener('click', this.handlers.spinClick);
@@ -792,31 +856,38 @@ window.PromoGames = (() => {
     }
 
     start() {
-      const primary = this.context.campaignConfig?.store?.primaryColor || '#667eea';
-      const secondary = this.context.campaignConfig?.store?.secondaryColor || '#764ba2';
+      const { primary, secondary } = getTicketMeta(this.context.campaignConfig);
       const guaranteedWin = Boolean(this.context.campaignConfig?.guaranteedWin);
       const prompt = guaranteedWin
         ? 'Scegli una scatola: ogni partecipante vince uno dei premi disponibili.'
         : 'Solo una scatola contiene il tuo esito. Quale scegli?';
+      const reducedMotion = Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 
-      this.container.innerHTML = `
-        <div class="mystery-shell" style="--gift-primary:${primary};--gift-secondary:${secondary}">
-          <p class="mystery-prompt">${prompt}</p>
-          <div class="mystery-grid" id="mysteryGrid">
-            ${Array.from({ length: this.boxCount }, (_, index) => `
-              <button type="button" class="mystery-box" data-box-index="${index}" aria-label="Scatola ${index + 1}">
-                <span class="mystery-box-top">?</span>
-                <span class="mystery-box-label">Scatola ${index + 1}</span>
-              </button>
-            `).join('')}
+      const middleHtml = `
+          <div class="paper-ticket-lamina paper-ticket-play">
+            <div class="mystery-shell" style="--gift-primary:${primary};--gift-secondary:${secondary}">
+              <p class="mystery-prompt">${prompt}</p>
+              <div class="mystery-grid" id="mysteryGrid">
+                ${Array.from({ length: this.boxCount }, (_, index) => `
+                  <button type="button" class="mystery-box" data-box-index="${index}" aria-label="Scatola ${index + 1}">
+                    <span class="mystery-box-top">?</span>
+                    <span class="mystery-box-label">Scatola ${index + 1}</span>
+                  </button>
+                `).join('')}
+              </div>
+              <div id="mysteryConfetti" class="mystery-confetti" aria-hidden="true"></div>
+            </div>
           </div>
-          <div id="mysteryReveal" class="mystery-reveal hidden"></div>
-          <div id="mysteryConfetti" class="mystery-confetti" aria-hidden="true"></div>
-        </div>
       `;
+      this.container.innerHTML = renderPaperTicket(
+        middleHtml,
+        this.context.campaignConfig,
+        reducedMotion,
+        META.instant_reveal.help
+      );
 
+      this.ticket = this.container.querySelector('#paperTicket');
       this.grid = this.container.querySelector('#mysteryGrid');
-      this.revealEl = this.container.querySelector('#mysteryReveal');
       this.confettiEl = this.container.querySelector('#mysteryConfetti');
       this.boxButtons = [...this.container.querySelectorAll('.mystery-box')];
       this.handlers = {};
@@ -828,7 +899,8 @@ window.PromoGames = (() => {
     }
 
     spawnConfetti() {
-      const colors = ['#667eea', '#764ba2', '#22c55e', '#f59e0b', '#ef4444', '#ffffff'];
+      const { primary, secondary } = getTicketMeta(this.context.campaignConfig);
+      const colors = [primary, secondary, mixHex(primary, '#ffffff', 0.35), mixHex(secondary, '#f59e0b', 0.4), '#ffffff'];
       for (let i = 0; i < 28; i += 1) {
         const piece = document.createElement('span');
         piece.className = 'mystery-confetti-piece';
@@ -877,11 +949,7 @@ window.PromoGames = (() => {
           }
         });
 
-        this.revealEl.innerHTML = `
-          <p class="eyebrow">Esito in arrivo…</p>
-          <strong>…</strong>
-        `;
-        this.revealEl.classList.remove('hidden');
+        this.ticket?.classList.add('is-revealed');
         setTimeout(() => this.context.onReveal(), 800);
       }, 650);
     }

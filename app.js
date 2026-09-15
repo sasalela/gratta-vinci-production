@@ -103,7 +103,7 @@ function applyCampaignBranding(config) {
   document.documentElement.style.setProperty('--brand-primary', config.store.primaryColor || '#667eea');
   document.documentElement.style.setProperty('--brand-secondary', config.store.secondaryColor || '#764ba2');
   document.body.classList.remove('game-type-scratch_card', 'game-type-wheel', 'game-type-instant_reveal');
-  document.body.classList.add(`game-type-${config.gameType || 'scratch_card'}`);
+  document.body.classList.add('ticket-game', `game-type-${config.gameType || 'scratch_card'}`);
   storeLabel.textContent = config.store.name;
   campaignTitle.textContent = config.name;
   document.getElementById('subtitle').textContent = config.description || 'Compila i dati e scopri se hai vinto.';
@@ -300,12 +300,14 @@ function initGame() {
     gameData,
     campaignConfig,
     onPlayStart: markPlayStarted,
-    onReveal: handleReveal
+    onReveal: handleReveal,
+    fetchReveal,
+    applyRevealResult
   });
   activeGame.start();
 }
 
-async function handleReveal() {
+async function fetchReveal() {
   try {
     const response = await fetch('/api/public/reveal', {
       method: 'POST',
@@ -314,20 +316,34 @@ async function handleReveal() {
     });
     const payload = await response.json();
     if (!response.ok || !payload.success) {
-      setGameUiState('game-revealed');
-      resultDiv.textContent = payload.error || 'Impossibile ottenere il risultato.';
-      resultDiv.className = 'result loser';
-      return;
+      return {
+        ok: false,
+        error: payload.error || 'Impossibile ottenere il risultato.'
+      };
     }
-    gameData = { ...gameData, ...payload.data };
-    showResult();
+    return { ok: true, data: payload.data };
   } catch {
-    setGameUiState('game-revealed');
-    resultDiv.textContent = 'Impossibile contattare il server. Riprova più tardi.';
-    resultDiv.className = 'result loser';
+    return { ok: false, error: 'Impossibile contattare il server. Riprova più tardi.' };
   }
 }
 
+function applyRevealResult(result) {
+  if (!result || !result.ok) {
+    setGameUiState('game-revealed');
+    resultDiv.textContent = result?.error || 'Impossibile ottenere il risultato.';
+    resultDiv.className = 'result loser';
+    return;
+  }
+  gameData = { ...gameData, ...result.data };
+  showResult();
+}
+
+async function handleReveal() {
+  const result = await fetchReveal();
+  applyRevealResult(result);
+}
+
+/** Schermata di esito unica per tutti i giochi (gratta, ruota, scatole). */
 function showResult() {
   if (!gameData) return;
   setGameUiState('game-revealed');
@@ -337,19 +353,15 @@ function showResult() {
   resultDiv.className = 'result';
   document.querySelector('.game-shell')?.classList.remove('outcome-won', 'outcome-lost');
 
-  const isScratch = (campaignConfig?.gameType || 'scratch_card') === 'scratch_card';
-
   if (gameData.won) {
     document.querySelector('.game-shell')?.classList.add('outcome-won');
-    if (isScratch) {
-      const prizeLabel = `${gameData.prize?.emoji || ''} ${gameData.prize?.name || ''}`.trim();
-      const winLabel = '<p class="result-stamp result-win-label">Hai vinto!</p>';
-      const prizeHtml = prizeLabel
-        ? `<p class="result-stamp result-prize">${escapeHtml(prizeLabel)}</p>`
-        : '';
-      resultDiv.innerHTML = winLabel + prizeHtml;
-      resultDiv.className = 'result winner';
-    }
+    const prizeLabel = `${gameData.prize?.emoji || ''} ${gameData.prize?.name || ''}`.trim();
+    const winLabel = '<p class="result-stamp result-win-label">Hai vinto!</p>';
+    const prizeHtml = prizeLabel
+      ? `<p class="result-stamp result-prize">${escapeHtml(prizeLabel)}</p>`
+      : '';
+    resultDiv.innerHTML = winLabel + prizeHtml;
+    resultDiv.className = 'result winner';
     finalNotice.textContent = 'Mostra la card in negozio per ritirare il premio.';
     renderVoucherCard()
       .then(() => {
@@ -366,16 +378,10 @@ function showResult() {
   document.querySelector('.game-shell')?.classList.add('outcome-lost');
   const loseMessage =
     gameData.loseMessage || campaignConfig?.loseMessage || 'Niente premio oggi — ci vediamo alla prossima!';
-  if (isScratch) {
-    resultDiv.innerHTML = `
-      <p class="result-stamp result-lose-msg">${escapeHtml(loseMessage)}</p>
-      <p class="result-stamp-invite">Ci vediamo alla prossima!</p>
-    `;
-    resultDiv.className = 'result loser';
-    return;
-  }
-
-  resultDiv.textContent = loseMessage;
+  resultDiv.innerHTML = `
+    <p class="result-stamp result-lose-msg">${escapeHtml(loseMessage)}</p>
+    <p class="result-stamp-invite">Ci vediamo alla prossima!</p>
+  `;
   resultDiv.className = 'result loser';
 }
 

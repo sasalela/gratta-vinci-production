@@ -203,9 +203,10 @@ canvas {
   margin-bottom: 8px;
 }
 
-/* Prima del gioco: una sola istruzione (niente eyebrow/titolo/status extra) */
+/* Prima del gioco: istruzione solo dentro il biglietto */
 #gameSection.game-ready #gameEyebrow,
 #gameSection.game-ready #gameTitle,
+#gameSection.game-ready #gameHelp,
 #gameSection.game-ready .wheel-status,
 #gameSection.game-ready .mystery-prompt,
 #gameSection.game-ready .scratch-progress,
@@ -217,6 +218,7 @@ canvas {
 #gameSection.game-playing #gameEyebrow,
 #gameSection.game-playing #gameTitle,
 #gameSection.game-playing #gameHelp,
+#gameSection.game-playing .paper-ticket-cue,
 #gameSection.game-playing .scratch-progress,
 #gameSection.game-playing .scratch-progress-text,
 #gameSection.game-playing .wheel-status,
@@ -224,14 +226,11 @@ canvas {
 #gameSection.game-revealed #gameEyebrow,
 #gameSection.game-revealed #gameTitle,
 #gameSection.game-revealed #gameHelp,
+#gameSection.game-revealed .paper-ticket-cue,
 #gameSection.game-revealed .scratch-progress,
 #gameSection.game-revealed .scratch-progress-text,
 #gameSection.game-revealed .wheel-status,
 #gameSection.game-revealed .mystery-prompt {
-  display: none;
-}
-
-body:not(.game-type-scratch_card) #gameSection.game-revealed #gameSurface {
   display: none;
 }
 
@@ -612,15 +611,15 @@ button:disabled {
   }
 }
 
-/* ——— Biglietto gratta e vinci (solo presentazione) ——— */
-body.game-type-scratch_card {
+/* ——— Biglietto condiviso (gratta / ruota / scatole) ——— */
+body.ticket-game {
   align-items: flex-start;
   overflow-x: hidden;
   padding: 12px;
   width: 100%;
 }
 
-body.game-type-scratch_card .game-shell {
+body.ticket-game .game-shell {
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -631,16 +630,22 @@ body.game-type-scratch_card .game-shell {
   width: 100%;
 }
 
-body.game-type-scratch_card .game-shell::before {
+body.ticket-game .game-shell::before {
   display: none;
 }
 
-body.game-type-scratch_card .hero {
+body.ticket-game .game-shell.game-ready .hero,
+body.ticket-game .game-shell.game-playing .hero,
+body.ticket-game .game-shell.game-revealed .hero {
+  display: none;
+}
+
+body.ticket-game .hero {
   background: transparent;
   padding: 8px 8px 12px;
 }
 
-body.game-type-scratch_card .brand-logo {
+body.ticket-game .brand-logo {
   background: #fff;
   border: 2px solid var(--brand-primary);
   border-radius: 14px;
@@ -651,8 +656,8 @@ body.game-type-scratch_card .brand-logo {
   width: 64px;
 }
 
-body.game-type-scratch_card .brand-initials,
-body.game-type-scratch_card .paper-ticket-initials {
+body.ticket-game .brand-initials,
+body.ticket-game .paper-ticket-initials {
   align-items: center;
   color: var(--brand-primary);
   display: inline-flex;
@@ -664,50 +669,49 @@ body.game-type-scratch_card .paper-ticket-initials {
   width: 100%;
 }
 
-body.game-type-scratch_card .eyebrow {
+body.ticket-game .eyebrow {
   color: color-mix(in srgb, var(--brand-primary) 80%, #111827);
 }
 
-body.game-type-scratch_card h1 {
+body.ticket-game h1 {
   font-size: clamp(1.55rem, 6vw, 2.35rem);
 }
 
-body.game-type-scratch_card #subtitle,
-body.game-type-scratch_card .campaign-info,
-body.game-type-scratch_card .checkbox-label,
-body.game-type-scratch_card .final-notice,
-body.game-type-scratch_card .game-help,
-body.game-type-scratch_card .result {
+body.ticket-game #subtitle,
+body.ticket-game .campaign-info,
+body.ticket-game .checkbox-label,
+body.ticket-game .final-notice,
+body.ticket-game .game-help,
+body.ticket-game .result {
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-body.game-type-scratch_card .card {
+body.ticket-game .card {
   padding: 12px 8px 18px;
 }
 
-body.game-type-scratch_card input[type="email"],
-body.game-type-scratch_card input[type="text"],
-body.game-type-scratch_card input[type="date"],
-body.game-type-scratch_card button {
+body.ticket-game input[type="email"],
+body.ticket-game input[type="text"],
+body.ticket-game input[type="date"],
+body.ticket-game button {
   min-height: 44px;
 }
 
-body.game-type-scratch_card button {
+body.ticket-game button {
   background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
   border-radius: 14px;
   font-weight: 800;
   width: 100%;
 }
 
-body.game-type-scratch_card #gameSurface {
+body.ticket-game #gameSurface {
   min-width: 0;
   width: 100%;
 }
 
-body.game-type-scratch_card #gameSurface canvas,
-body.game-type-scratch_card #scratchCanvas {
+body.ticket-game #scratchCanvas {
   background: transparent;
   border-radius: 12px;
   box-shadow: none;
@@ -718,6 +722,68 @@ body.game-type-scratch_card #scratchCanvas {
   max-width: 100%;
   touch-action: none;
   width: 100%;
+}
+
+body.ticket-game #wheelCanvas {
+  background: transparent;
+  border-radius: 50%;
+  box-shadow: 0 2px 0 rgba(15, 23, 42, 0.12);
+  cursor: default;
+  display: block;
+  height: auto;
+  margin: 0 auto;
+  max-width: min(100%, 280px);
+  touch-action: manipulation;
+  width: min(100%, 280px);
+}
+
+body.ticket-game .paper-ticket-play {
+  min-width: 0;
+}
+
+body.ticket-game .paper-ticket-play .wheel-shell {
+  gap: 12px;
+  padding: 4px 0 10px;
+  width: 100%;
+}
+
+body.ticket-game .paper-ticket-play .wheel-spin-btn {
+  margin-top: 0;
+  max-width: 100%;
+  min-height: 44px;
+  min-width: 44px;
+  width: 100%;
+}
+
+body.ticket-game .paper-ticket-play .mystery-shell {
+  gap: 12px;
+  justify-items: stretch;
+  padding: 4px 0 8px;
+  width: 100%;
+}
+
+body.ticket-game .paper-ticket-play .mystery-grid {
+  gap: 8px;
+  width: 100%;
+}
+
+body.ticket-game .paper-ticket-play .mystery-box {
+  border-radius: 14px;
+  box-shadow: 0 3px 0 rgba(15, 23, 42, 0.14);
+  margin-top: 0;
+  min-height: 96px;
+  min-width: 44px;
+  padding: 12px 6px;
+  width: 100%;
+}
+
+body.ticket-game .paper-ticket-play .mystery-box-top {
+  font-size: 1.7rem;
+}
+
+body.ticket-game .paper-ticket-play .mystery-box-label {
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
 }
 
 .paper-ticket {
@@ -813,6 +879,18 @@ body.game-type-scratch_card #scratchCanvas {
   opacity: 0.92;
 }
 
+.paper-ticket-cue {
+  color: #111827;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  margin: 12px 14px 0;
+  position: relative;
+  text-align: center;
+  z-index: 1;
+}
+
 .paper-ticket-lamina {
   margin: 12px 12px 8px;
   position: relative;
@@ -882,28 +960,28 @@ body.game-type-scratch_card #scratchCanvas {
   to { opacity: 1; transform: scale(1); }
 }
 
-body.game-type-scratch_card #gameSection.game-revealed #gameSurface {
+body.ticket-game #gameSection.game-revealed #gameSurface {
   display: block;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed .hero {
+body.ticket-game .game-shell.game-revealed .hero {
   padding: 4px 8px 6px;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed .brand-logo {
+body.ticket-game .game-shell.game-revealed .brand-logo {
   display: none;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed h1,
-body.game-type-scratch_card .game-shell.game-revealed .eyebrow {
+body.ticket-game .game-shell.game-revealed h1,
+body.ticket-game .game-shell.game-revealed .eyebrow {
   display: none;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed #gameSection.card {
+body.ticket-game .game-shell.game-revealed #gameSection.card {
   padding: 4px 6px 12px;
 }
 
-body.game-type-scratch_card .result {
+body.ticket-game .result {
   background: transparent;
   border: 0;
   box-shadow: none;
@@ -913,14 +991,14 @@ body.game-type-scratch_card .result {
   z-index: 2;
 }
 
-body.game-type-scratch_card .result.winner,
-body.game-type-scratch_card .result.loser {
+body.ticket-game .result.winner,
+body.ticket-game .result.loser {
   background: transparent;
   border: 0;
   color: var(--ink);
 }
 
-body.game-type-scratch_card .game-shell.game-revealed .paper-ticket {
+body.ticket-game .game-shell.game-revealed .paper-ticket {
   border-bottom: 0;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
@@ -928,11 +1006,11 @@ body.game-type-scratch_card .game-shell.game-revealed .paper-ticket {
   margin-bottom: 0;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed .paper-ticket-footer {
+body.ticket-game .game-shell.game-revealed .paper-ticket-footer {
   display: none;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed .result {
+body.ticket-game .game-shell.game-revealed .result {
   background:
     linear-gradient(180deg, #fffaf0 0%, #f4efe4 100%);
   border: 3px solid var(--brand-primary);
@@ -943,7 +1021,7 @@ body.game-type-scratch_card .game-shell.game-revealed .result {
   padding: 10px 12px 14px;
 }
 
-body.game-type-scratch_card .result-stamp {
+body.ticket-game .result-stamp {
   animation: stamp-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
   background:
     radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--brand-primary) 22%, transparent), transparent 62%),
@@ -956,11 +1034,11 @@ body.game-type-scratch_card .result-stamp {
   padding: 14px 12px;
 }
 
-body.game-type-scratch_card .result.winner .result-stamp {
+body.ticket-game .result.winner .result-stamp {
   padding: 10px 10px;
 }
 
-body.game-type-scratch_card .result-win-label {
+body.ticket-game .result-win-label {
   color: var(--brand-primary);
   font-size: clamp(1.12rem, 5vw, 1.5rem);
   font-weight: 900;
@@ -969,7 +1047,7 @@ body.game-type-scratch_card .result-win-label {
   margin: 0 auto 8px;
 }
 
-body.game-type-scratch_card .result-prize {
+body.ticket-game .result-prize {
   animation-delay: 150ms;
   color: var(--brand-primary);
   font-size: clamp(1.45rem, 6.5vw, 2.05rem);
@@ -979,7 +1057,7 @@ body.game-type-scratch_card .result-prize {
   margin: 0;
 }
 
-body.game-type-scratch_card .result-lose-msg {
+body.ticket-game .result-lose-msg {
   color: var(--ink);
   font-size: 1.05rem;
   font-weight: 800;
@@ -987,7 +1065,7 @@ body.game-type-scratch_card .result-lose-msg {
   margin: 0;
 }
 
-body.game-type-scratch_card .result-stamp-invite {
+body.ticket-game .result-stamp-invite {
   color: color-mix(in srgb, var(--brand-primary) 45%, #4b5563);
   font-size: 0.92rem;
   font-weight: 700;
@@ -1007,11 +1085,11 @@ body.game-type-scratch_card .result-stamp-invite {
   }
 }
 
-body.game-type-scratch_card .voucher-card {
+body.ticket-game .voucher-card {
   margin-top: 6px;
 }
 
-body.game-type-scratch_card #voucherCanvas {
+body.ticket-game #voucherCanvas {
   border-radius: 14px;
   box-shadow: 0 3px 0 rgba(15, 23, 42, 0.14);
   margin: 0 auto 10px;
@@ -1020,17 +1098,17 @@ body.game-type-scratch_card #voucherCanvas {
   width: auto;
 }
 
-body.game-type-scratch_card #downloadVoucherBtn {
+body.ticket-game #downloadVoucherBtn {
   margin-top: 0;
   min-height: 48px;
 }
 
-body.game-type-scratch_card .final-notice {
+body.ticket-game .final-notice {
   margin-top: 6px;
 }
 
 /* Riga finale su fondo brand: base chiara + inchiostro scuro (≥4.5:1) */
-body.game-type-scratch_card .game-shell.game-revealed .final-notice {
+body.ticket-game .game-shell.game-revealed .final-notice {
   background: #fffdf8;
   border: 1px solid color-mix(in srgb, var(--brand-primary) 28%, #d6d3cd);
   border-radius: 12px;
@@ -1044,40 +1122,42 @@ body.game-type-scratch_card .game-shell.game-revealed .final-notice {
   padding: 10px 12px;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed.outcome-won #scratchCanvas,
-body.game-type-scratch_card .game-shell.game-revealed.outcome-won .paper-ticket-lamina {
+body.ticket-game .game-shell.game-revealed.outcome-won #scratchCanvas,
+body.ticket-game .game-shell.game-revealed.outcome-won .paper-ticket-lamina,
+body.ticket-game .game-shell.game-revealed.outcome-won .scratch-progress,
+body.ticket-game .game-shell.game-revealed.outcome-won .scratch-progress-text {
   display: none;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed.outcome-won .paper-ticket {
+body.ticket-game .game-shell.game-revealed.outcome-won .paper-ticket {
   margin-bottom: 6px;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed.outcome-won .paper-ticket-header {
+body.ticket-game .game-shell.game-revealed.outcome-won .paper-ticket-header {
   padding: 10px 12px 8px;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed.outcome-won .result {
+body.ticket-game .game-shell.game-revealed.outcome-won .result {
   margin-bottom: 8px;
   padding: 8px 10px 10px;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed.outcome-won #voucherCanvas {
+body.ticket-game .game-shell.game-revealed.outcome-won #voucherCanvas {
   max-height: min(22vh, 168px);
   margin-bottom: 8px;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed.outcome-won #downloadVoucherBtn {
+body.ticket-game .game-shell.game-revealed.outcome-won #downloadVoucherBtn {
   min-height: 44px;
   padding: 10px 14px;
 }
 
-body.game-type-scratch_card .game-shell.game-revealed.outcome-lost .paper-ticket-lamina {
+body.ticket-game .game-shell.game-revealed.outcome-lost .paper-ticket-lamina {
   display: none;
 }
 
 @media (max-width: 360px) {
-  body.game-type-scratch_card {
+  body.ticket-game {
     padding: 8px;
   }
 
@@ -1099,7 +1179,7 @@ body.game-type-scratch_card .game-shell.game-revealed.outcome-lost .paper-ticket
 @media (prefers-reduced-motion: reduce) {
   .paper-ticket:not(.paper-ticket--static),
   .paper-ticket.is-revealed #scratchCanvas,
-  body.game-type-scratch_card .result-stamp,
+  body.ticket-game .result-stamp,
   .scratch-speck {
     animation: none !important;
   }
