@@ -203,9 +203,10 @@ canvas {
   margin-bottom: 8px;
 }
 
-/* Prima del gioco: una sola istruzione (niente eyebrow/titolo/status extra) */
+/* Prima del gioco: istruzione solo dentro il biglietto */
 #gameSection.game-ready #gameEyebrow,
 #gameSection.game-ready #gameTitle,
+#gameSection.game-ready #gameHelp,
 #gameSection.game-ready .wheel-status,
 #gameSection.game-ready .mystery-prompt,
 #gameSection.game-ready .scratch-progress,
@@ -217,6 +218,7 @@ canvas {
 #gameSection.game-playing #gameEyebrow,
 #gameSection.game-playing #gameTitle,
 #gameSection.game-playing #gameHelp,
+#gameSection.game-playing .paper-ticket-cue,
 #gameSection.game-playing .scratch-progress,
 #gameSection.game-playing .scratch-progress-text,
 #gameSection.game-playing .wheel-status,
@@ -224,6 +226,7 @@ canvas {
 #gameSection.game-revealed #gameEyebrow,
 #gameSection.game-revealed #gameTitle,
 #gameSection.game-revealed #gameHelp,
+#gameSection.game-revealed .paper-ticket-cue,
 #gameSection.game-revealed .scratch-progress,
 #gameSection.game-revealed .scratch-progress-text,
 #gameSection.game-revealed .wheel-status,
@@ -631,6 +634,12 @@ body.ticket-game .game-shell::before {
   display: none;
 }
 
+body.ticket-game .game-shell.game-ready .hero,
+body.ticket-game .game-shell.game-playing .hero,
+body.ticket-game .game-shell.game-revealed .hero {
+  display: none;
+}
+
 body.ticket-game .hero {
   background: transparent;
   padding: 8px 8px 12px;
@@ -868,6 +877,18 @@ body.ticket-game .paper-ticket-play .mystery-box-label {
   line-height: 1.3;
   margin: 3px 0 0;
   opacity: 0.92;
+}
+
+.paper-ticket-cue {
+  color: #111827;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  margin: 12px 14px 0;
+  position: relative;
+  text-align: center;
+  z-index: 1;
 }
 
 .paper-ticket-lamina {

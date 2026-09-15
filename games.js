@@ -43,13 +43,16 @@ window.PromoGames = (() => {
     };
   }
 
-  /** Cornice tagliando condivisa: testata + corpo gioco + micro-testo. */
-  function renderPaperTicket(middleHtml, campaignConfig, reducedMotion) {
+  /** Cornice tagliando condivisa: testata + eventuale istruzione + corpo gioco + micro-testo. */
+  function renderPaperTicket(middleHtml, campaignConfig, reducedMotion, cueText) {
     const { storeName, campaignName, logoUrl } = getTicketMeta(campaignConfig);
     const initials = storeInitials(storeName);
     const logoHtml = logoUrl
       ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(storeName)}">`
       : `<span class="paper-ticket-initials" aria-hidden="true">${escapeHtml(initials)}</span>`;
+    const cueHtml = cueText
+      ? `<p class="paper-ticket-cue">${escapeHtml(cueText)}</p>`
+      : '';
 
     return `
       <article class="paper-ticket${reducedMotion ? ' paper-ticket--static' : ''}" id="paperTicket">
@@ -60,6 +63,7 @@ window.PromoGames = (() => {
             <p class="paper-ticket-campaign">${escapeHtml(campaignName)}</p>
           </div>
         </header>
+        ${cueHtml}
         ${middleHtml}
         <footer class="paper-ticket-footer">
           <span>Gioco promozionale</span>
@@ -174,7 +178,8 @@ window.PromoGames = (() => {
       this.container.innerHTML = renderPaperTicket(
         middleHtml,
         this.context.campaignConfig,
-        this.reducedMotion
+        this.reducedMotion,
+        META.scratch_card.help
       );
 
       this.ticket = this.container.querySelector('#paperTicket');
@@ -612,7 +617,8 @@ window.PromoGames = (() => {
       this.container.innerHTML = renderPaperTicket(
         middleHtml,
         this.context.campaignConfig,
-        reducedMotion
+        reducedMotion,
+        META.wheel.help
       );
       this.ticket = this.container.querySelector('#paperTicket');
       this.canvas = this.container.querySelector('#wheelCanvas');
@@ -885,7 +891,8 @@ window.PromoGames = (() => {
       this.container.innerHTML = renderPaperTicket(
         middleHtml,
         this.context.campaignConfig,
-        reducedMotion
+        reducedMotion,
+        META.instant_reveal.help
       );
 
       this.ticket = this.container.querySelector('#paperTicket');
