@@ -4,15 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pannello Negozio — Gratta & Vinci</title>
-  <link rel="stylesheet" href="store.css?v=2.6.0">
+  <link rel="stylesheet" href="store.css?v=3.0.0">
 </head>
 <body>
   <main class="page">
     <section id="loginSection" class="login-card">
       <div class="login-copy">
         <p class="eyebrow">Area negozio</p>
-        <h1>Gestisci le tue campagne promozionali</h1>
-        <p>Accedi per creare campagne, controllare premi, validare voucher e vedere le giocate.</p>
+        <h1>Metti in piedi la tua promozione</h1>
+        <p>Tre passi: cosa regali, come si gioca, come lo fai sapere.</p>
       </div>
       <div class="card login-box">
         <h2>Accesso</h2>
@@ -21,28 +21,39 @@
         <label for="password">Password</label>
         <input id="password" type="password" autocomplete="current-password" placeholder="password">
         <div id="loginError" class="message error hidden"></div>
-        <button id="loginBtn" type="button" class="primary full">Accedi</button>
+        <button id="loginBtn" type="button" class="primary full hit">Accedi</button>
         <a href="/register.html" class="register-link">Non hai un account? Registra il tuo negozio</a>
         <a href="/partner.html" class="register-link">Sei un gestore? Accedi all’area partner</a>
       </div>
     </section>
 
     <section id="appSection" class="app-shell hidden">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Pannello negozio</p>
-          <h1 id="storeName">Negozio</h1>
-          <p id="userLabel" class="muted"></p>
+      <header class="phone-topbar">
+        <div class="brand-row" id="dashBrand">
+          <div id="dashLogo" class="brand-logo" aria-hidden="true">GV</div>
+          <div>
+            <p class="eyebrow">Il tuo negozio</p>
+            <h1 id="storeName">Negozio</h1>
+            <p id="userLabel" class="muted"></p>
+          </div>
         </div>
         <div class="topbar-actions">
-          <button id="refreshBtn" type="button" class="secondary">Aggiorna</button>
-          <button id="logoutBtn" type="button" class="ghost">Esci</button>
+          <button id="refreshBtn" type="button" class="secondary hit">Aggiorna</button>
+          <div class="altro-wrap">
+            <button id="altroBtn" type="button" class="ghost hit" aria-expanded="false" aria-controls="altroMenu">Altro</button>
+            <div id="altroMenu" class="altro-menu hidden" role="menu">
+              <button type="button" data-view="players" role="menuitem">Giocatori</button>
+              <button type="button" data-view="vouchers" role="menuitem">Voucher</button>
+              <button type="button" data-view="billing" role="menuitem">Piano</button>
+              <button type="button" data-view="profile" role="menuitem">Profilo</button>
+              <button type="button" id="logoutBtn" role="menuitem">Esci</button>
+            </div>
+          </div>
         </div>
       </header>
 
       <div id="appError" class="message error hidden"></div>
       <div id="appSuccess" class="message success hidden"></div>
-
       <div id="alertsList" class="alerts"></div>
 
       <section id="subscriptionBanner" class="subscription-banner">
@@ -50,460 +61,248 @@
           <p class="eyebrow">Abbonamento</p>
           <h2 id="subscriptionTitle">Trial attivo</h2>
           <p id="subscriptionText">Controllo stato abbonamento in corso.</p>
-          <button id="openBillingBtn" type="button" class="ghost small">Gestisci piano</button>
+          <button id="openBillingBtn" type="button" class="ghost small hit">Gestisci piano</button>
         </div>
         <strong id="subscriptionDays">—</strong>
       </section>
 
-      <section id="setupPanel" class="setup-panel hidden">
-        <div>
-          <p class="eyebrow">Prima configurazione</p>
-          <h2>Completa la pagina negozio</h2>
-          <p>Usiamo i dati dell’account come base. Se manca qualcosa, sistemalo qui senza entrare in schermate lunghe.</p>
-        </div>
-        <div class="setup-grid">
-          <label>Settore
-            <select id="setupBusinessType">
-              <option value="bar">Bar / pub</option>
-              <option value="restaurant">Ristorante</option>
-              <option value="retail">Negozio</option>
-              <option value="beauty">Beauty / estetica</option>
-              <option value="fitness">Palestra / fitness</option>
-              <option value="generic">Altro</option>
-            </select>
-          </label>
-          <label>Telefono
-            <input id="setupPhone" type="text" placeholder="Telefono attività">
-          </label>
-          <label>Indirizzo
-            <input id="setupAddress" type="text" placeholder="Indirizzo negozio">
-          </label>
-          <label>Logo URL
-            <input id="setupLogoUrl" type="url" placeholder="https://...">
-          </label>
-          <label>Colore 1
-            <input id="setupPrimaryColor" type="color" value="#667eea">
-          </label>
-          <label>Colore 2
-            <input id="setupSecondaryColor" type="color" value="#764ba2">
-          </label>
-        </div>
-        <div class="setup-actions">
-          <button id="saveSetupBtn" type="button" class="primary">Salva pagina e crea campagna</button>
-          <button type="button" class="ghost" data-quick-tab="composer">Vai alle campagne guidate</button>
-        </div>
+      <!-- ── CRUSCOTTO ─────────────────────────────────────────── -->
+      <section id="viewDashboard" class="view-panel">
+        <article id="activePromoCard" class="promo-hero card">
+          <!-- filled by JS -->
+        </article>
+        <section class="other-campaigns">
+          <h2 class="section-title">Altre campagne</h2>
+          <div id="otherCampaigns" class="other-list"></div>
+        </section>
       </section>
 
-      <section class="operation-dashboard">
-        <article class="operation-card featured">
-          <div>
-            <p class="eyebrow">Azioni rapide</p>
-            <h2 id="quickCampaignTitle">Gestisci il tuo gioco</h2>
-            <p id="quickCampaignSubtitle">Crea una campagna o apri quella attiva per iniziare.</p>
+      <!-- ── WIZARD 3 PASSI ────────────────────────────────────── -->
+      <section id="viewWizard" class="view-panel hidden">
+        <div class="wizard-head">
+          <button id="wizardBackDashBtn" type="button" class="ghost hit">← Cruscotto</button>
+          <div class="wizard-progress" id="wizardProgress" aria-label="Passi promozione">
+            <span data-step-dot="1">1</span>
+            <span data-step-dot="2">2</span>
+            <span data-step-dot="3">3</span>
           </div>
-          <div class="quick-link">
-            <input id="quickPlayUrl" type="text" readonly placeholder="Link gioco non disponibile">
-            <button id="copyQuickLinkBtn" type="button" class="secondary">Copia link</button>
-          </div>
-          <div class="quick-actions">
-            <button id="quickNewCampaignBtn" type="button" class="primary">Nuova campagna</button>
-            <button type="button" class="ghost" data-quick-tab="composer">Crea guidata</button>
-            <button type="button" class="ghost" data-quick-tab="vouchers">Valida voucher</button>
-            <button type="button" class="ghost" data-quick-tab="materials">Materiali promo</button>
-            <button type="button" class="ghost" data-quick-tab="profile">Profilo negozio</button>
-          </div>
-        </article>
-        <article class="operation-card">
-          <p class="eyebrow">Da controllare</p>
-          <div id="quickInsights" class="quick-insights"></div>
-        </article>
-      </section>
-
-      <section class="stats-grid">
-        <article class="stat-card">
-          <span>Campagne attive</span>
-          <strong id="statActiveCampaigns">0</strong>
-        </article>
-        <article class="stat-card">
-          <span>Giocate</span>
-          <strong id="statParticipations">0</strong>
-        </article>
-        <article class="stat-card">
-          <span>Voucher aperti</span>
-          <strong id="statOpenVouchers">0</strong>
-        </article>
-        <article class="stat-card">
-          <span>Voucher riscattati</span>
-          <strong id="statRedeemedVouchers">0</strong>
-        </article>
-      </section>
-
-      <nav class="tabs" aria-label="Sezioni pannello negozio">
-        <button class="tab active" data-tab="campaigns">Campagne</button>
-        <button class="tab" data-tab="composer">Composer guidato</button>
-        <button class="tab" data-tab="editor">Crea / modifica</button>
-        <button class="tab" data-tab="materials">Materiali promo</button>
-        <button class="tab" data-tab="vouchers">Voucher</button>
-        <button class="tab" data-tab="players">Giocatori</button>
-        <button class="tab" data-tab="billing">Piano</button>
-        <button class="tab" data-tab="profile">Profilo negozio</button>
-      </nav>
-
-      <section id="tabCampaigns" class="tab-panel">
-        <div class="section-heading">
-          <div>
-            <h2>Campagne</h2>
-            <p class="muted">Vedi subito quali campagne sono attive e modifica i parametri.</p>
-          </div>
-          <button id="newCampaignBtn" type="button" class="primary">Nuova campagna</button>
-        </div>
-        <div id="campaignCards" class="campaign-grid"></div>
-      </section>
-
-      <section id="tabComposer" class="tab-panel hidden">
-        <div class="composer-hero">
-          <div>
-            <p class="eyebrow">Auto Composer</p>
-            <h2>Crea una campagna in 2 minuti</h2>
-            <p>Una domanda alla volta. Ti suggeriamo gioco, premi, probabilità e testi senza farti compilare un pannello tecnico.</p>
-          </div>
-          <button id="composerResetBtn" type="button" class="ghost">Ricomincia</button>
         </div>
 
-        <form id="composerForm" class="composer-shell">
-          <input id="composerBusinessType" type="hidden" value="bar">
-          <input id="composerGoal" type="hidden" value="bring_customers">
-          <input id="composerRewardStyle" type="hidden" value="guaranteed_multi_prize">
-          <input id="composerGamePreference" type="hidden" value="auto">
-          <input id="composerCollectPhone" type="hidden" value="false">
+        <!-- PASSO 1 -->
+        <div id="wizardStep1" class="wizard-step">
+          <h2>Cosa regali</h2>
+          <p class="muted">Elenco premi. Aggiungi righe senza cambiare pagina.</p>
 
-          <div class="composer-progress" id="composerProgress"></div>
+          <div id="prizeRows" class="prize-rows"></div>
+          <button id="addPrizeRowBtn" type="button" class="secondary full hit">+ Aggiungi premio</button>
 
-          <div class="composer-stage">
-            <section class="composer-step active" data-composer-step="0">
-              <p class="eyebrow">Domanda 1 di 5</p>
-              <h3>Che tipo di attività hai?</h3>
-              <p class="muted">Serve per scegliere premi e testi già vicini al tuo settore.</p>
-              <div class="composer-choice-grid">
-                <button type="button" data-composer-set="businessType" data-value="bar">Bar / pub<span>Birra, caffè, aperitivi e sconti veloci.</span></button>
-                <button type="button" data-composer-set="businessType" data-value="restaurant">Ristorante<span>Dessert, calici, menu e ritorno a cena.</span></button>
-                <button type="button" data-composer-set="businessType" data-value="retail">Negozio<span>Buoni acquisto e sconti progressivi.</span></button>
-                <button type="button" data-composer-set="businessType" data-value="beauty">Beauty<span>Trattamenti, coupon e prenotazioni.</span></button>
-                <button type="button" data-composer-set="businessType" data-value="fitness">Fitness<span>Ingressi prova e promozioni iscrizione.</span></button>
-                <button type="button" data-composer-set="businessType" data-value="generic">Altro<span>Partiamo da una struttura generica.</span></button>
-              </div>
-            </section>
-
-            <section class="composer-step" data-composer-step="1">
-              <p class="eyebrow">Domanda 2 di 5</p>
-              <h3>Qual è l’obiettivo principale?</h3>
-              <p class="muted">Il Composer adatta gioco, campi richiesti e durata.</p>
-              <div class="composer-choice-grid">
-                <button type="button" data-composer-set="goal" data-value="bring_customers">Portare clienti in negozio<span>Promo semplice da mostrare alla cassa.</span></button>
-                <button type="button" data-composer-set="goal" data-value="weekend_promo">Spingere weekend/evento<span>Durata breve e urgenza più alta.</span></button>
-                <button type="button" data-composer-set="goal" data-value="collect_contacts">Raccogliere contatti<span>Consigliato chiedere anche telefono.</span></button>
-                <button type="button" data-composer-set="goal" data-value="reward_purchase">Premiare chi acquista<span>Premi usati come incentivo post acquisto.</span></button>
-              </div>
-            </section>
-
-            <section class="composer-step" data-composer-step="2">
-              <p class="eyebrow">Domanda 3 di 5</p>
-              <h3>Che tipo di premio vuoi offrire?</h3>
-              <p class="muted">Scegli una logica, non le percentuali: le prepariamo noi.</p>
-              <div class="composer-choice-grid">
-                <button type="button" data-composer-set="rewardStyle" data-value="guaranteed_multi_prize">Vinci sempre qualcosa<span>Premio top raro + sconti più frequenti.</span></button>
-                <button type="button" data-composer-set="rewardStyle" data-value="single_prize">Un solo premio raro<span>Controlli meglio il costo promozionale.</span></button>
-                <button type="button" data-composer-set="rewardStyle" data-value="discounts_only">Solo sconti<span>Perfetto se non vuoi gestire omaggi fisici.</span></button>
-              </div>
-              <div class="form-row two composer-inline-fields">
-                <div>
-                  <label for="composerMainPrize">Premio principale</label>
-                  <input id="composerMainPrize" type="text" placeholder="Birra gratis">
-                </div>
-                <div>
-                  <label for="composerDurationDays">Durata giorni</label>
-                  <input id="composerDurationDays" type="number" min="1" max="60" value="7">
-                </div>
-              </div>
-            </section>
-
-            <section class="composer-step" data-composer-step="3">
-              <p class="eyebrow">Domanda 4 di 5</p>
-              <h3>Vuoi scegliere il gioco o lasciarlo decidere a noi?</h3>
-              <p class="muted">Se non sai cosa scegliere, “automatico” è la strada più veloce.</p>
-              <div class="composer-choice-grid">
-                <button type="button" data-composer-set="gamePreference" data-value="auto">Consigliami automaticamente<span>Scelta migliore in base ai premi.</span></button>
-                <button type="button" data-composer-set="gamePreference" data-value="wheel">Ruota della fortuna<span>La più forte per multipremio.</span></button>
-                <button type="button" data-composer-set="gamePreference" data-value="scratch_card">Gratta e vinci<span>Classico e immediato.</span></button>
-                <button type="button" data-composer-set="gamePreference" data-value="instant_reveal">Scatole misteriose<span>Rapido, leggero e mobile friendly.</span></button>
-              </div>
-              <label class="switch-row composer-phone-toggle">
-                <input id="composerCollectPhoneCheckbox" type="checkbox">
-                Chiedi anche il telefono
-              </label>
-            </section>
-
-            <section class="composer-step" data-composer-step="4">
-              <p class="eyebrow">Domanda 5 di 5</p>
-              <h3>Ultimo dettaglio: come vuoi chiamarla?</h3>
-              <p class="muted">Se lasci vuoto, generiamo un nome automatico.</p>
-              <label for="composerCampaignName">Nome campagna</label>
-              <input id="composerCampaignName" type="text" placeholder="Promo weekend">
-              <div class="form-row two composer-inline-fields">
-                <div>
-                  <label for="composerDiscountHigh">Sconto alto %</label>
-                  <input id="composerDiscountHigh" type="number" min="1" max="90" value="30">
-                </div>
-                <div>
-                  <label for="composerDiscountLow">Sconto basso %</label>
-                  <input id="composerDiscountLow" type="number" min="1" max="90" value="10">
-                </div>
-              </div>
-            </section>
-
-            <aside class="composer-coach">
-              <div class="composer-video-card">
-                <span class="composer-play-mark"></span>
-                <strong id="composerCoachTitle">Guida veloce</strong>
-                <p id="composerCoachText">Ti aiutiamo a scegliere senza tecnicismi. Ogni risposta aggiorna la campagna consigliata.</p>
-              </div>
-              <div id="composerResult" class="composer-result composer-result-compact">
-                <p class="muted">La preview si aggiorna mentre rispondi.</p>
-              </div>
-            </aside>
-          </div>
-
-          <div class="composer-footer">
-            <button id="composerBackBtn" type="button" class="ghost">Indietro</button>
-            <button id="composerNextBtn" type="button" class="secondary">Avanti</button>
-            <button id="composerPreviewBtn" type="submit" class="secondary">Aggiorna anteprima</button>
-            <button id="composerApplyBtn" type="button" class="primary">Crea campagna</button>
-          </div>
-          <div id="composerInlineStatus" class="composer-inline-status hidden"></div>
-        </form>
-      </section>
-
-      <section id="tabEditor" class="tab-panel hidden">
-        <div class="section-heading">
-          <div>
-            <h2 id="editorTitle">Nuova campagna</h2>
-            <p id="editorSubtitle" class="muted">Compila campagna e primo premio: verranno salvati insieme.</p>
-          </div>
-          <button id="cancelEditBtn" type="button" class="ghost">Torna alle campagne</button>
-        </div>
-
-        <form id="campaignForm" class="editor-grid">
-          <section class="card form-section">
-            <h3>1. Informazioni campagna</h3>
-            <div class="form-row two">
-              <div>
-                <label for="campaignName">Nome campagna</label>
-                <input id="campaignName" type="text" placeholder="Birra gratis">
-              </div>
-              <div>
-                <label for="campaignSlug">Slug link</label>
-                <input id="campaignSlug" type="text" placeholder="birra-gratis">
-              </div>
-            </div>
-            <label for="campaignDescription">Descrizione</label>
-            <textarea id="campaignDescription" rows="3" placeholder="Descrivi cosa può vincere il cliente"></textarea>
-            <div class="form-row two">
-              <div>
-                <label for="startDate">Data inizio</label>
-                <input id="startDate" type="date">
-              </div>
-              <div>
-                <label for="endDate">Data fine</label>
-                <input id="endDate" type="date">
-              </div>
-            </div>
-            <label class="switch-row">
-              <input id="campaignActive" type="checkbox" checked>
-              Campagna attiva
+          <div id="emojiPicker" class="emoji-picker hidden">
+            <p class="muted">Scegli un’icona</p>
+            <div id="emojiGrid" class="emoji-grid"></div>
+            <label for="emojiFree">Oppure scrivi un’emoji
+              <input id="emojiFree" type="text" maxlength="4" placeholder="🎁">
             </label>
-          </section>
-
-          <section class="card form-section">
-            <h3>2. Regole di gioco</h3>
-            <label for="gameType">Tipo di gioco</label>
-            <select id="gameType">
-              <option value="scratch_card">Gratta e vinci</option>
-              <option value="wheel">Ruota della fortuna</option>
-              <option value="instant_reveal">Scatole misteriose</option>
-            </select>
-            <small>Scegli quale esperienza vedrà il giocatore su mobile.</small>
-            <div class="form-row two">
-              <div>
-                <label for="playLimitMode">Limite partecipazione</label>
-                <select id="playLimitMode">
-                  <option value="per_campaign">Una volta per campagna</option>
-                  <option value="per_day">Una volta al giorno</option>
-                </select>
-              </div>
-              <div>
-                <label for="voucherValidityDays">Scadenza voucher</label>
-                <input id="voucherValidityDays" type="number" min="1" value="15">
-                <small>Giorni validità dopo la vincita</small>
-              </div>
-            </div>
-            <label class="switch-row">
-              <input id="guaranteedWin" type="checkbox">
-              Vincita garantita (ogni giocatore vince uno dei premi disponibili)
-            </label>
-            <small id="guaranteedWinHelp" class="field-help">Se attiva, le probabilità si ripartiscono solo tra i premi. Se disattiva, la somma premi può lasciare una quota di non vincita.</small>
-            <div id="probabilitySummary" class="probability-summary hidden"></div>
-            <label for="loseMessage" id="loseMessageLabel">Messaggio se non vince</label>
-            <input id="loseMessage" type="text" value="Niente premio oggi — ci vediamo alla prossima!">
-          </section>
-
-          <section class="card form-section">
-            <h3>3. Dati richiesti al giocatore</h3>
-            <p class="muted">Nome ed email restano obbligatori. Puoi aggiungere altri dati alla form del gioco.</p>
-            <div class="checkbox-grid">
-              <label><input type="checkbox" data-field="name" checked disabled> Nome obbligatorio</label>
-              <label><input type="checkbox" data-field="email" checked disabled> Email obbligatoria</label>
-              <label><input type="checkbox" data-field="phone"> Telefono</label>
-              <label><input type="checkbox" data-field="birthDate"> Data nascita</label>
-              <label><input type="checkbox" data-field="marketingConsent"> Consenso marketing</label>
-            </div>
-          </section>
-
-          <section class="card form-section prize-section">
-            <div class="section-heading compact">
-              <div>
-                <h3>4. Premi</h3>
-                <p class="muted">Quando crei una nuova campagna puoi inserire subito il primo premio. Dopo il salvataggio potrai aggiungerne altri.</p>
-              </div>
-            </div>
-            <div id="prizeList" class="prize-list"></div>
-            <div id="prizeForm" class="prize-form">
-              <input id="editingPrizeId" type="hidden">
-              <div class="form-row two">
-                <div>
-                  <label for="prizeName">Nome premio</label>
-                  <input id="prizeName" type="text" placeholder="Birra gratis">
-                </div>
-                <div>
-                  <label for="prizeEmoji">Emoji</label>
-                  <input id="prizeEmoji" type="text" placeholder="🍺">
-                </div>
-              </div>
-              <label for="prizeDescription">Descrizione premio</label>
-              <input id="prizeDescription" type="text">
-              <div class="form-row two">
-                <div>
-                  <label for="prizeQuantity">Quantità totale</label>
-                  <input id="prizeQuantity" type="number" min="0" value="10">
-                </div>
-                <div>
-                  <label for="prizeRemainingQuantity">Quantità residua</label>
-                  <input id="prizeRemainingQuantity" type="number" min="0" placeholder="Uguale al totale">
-                </div>
-              </div>
-              <div class="form-row two">
-                <div>
-                  <label for="prizeProbability">Percentuale vincita</label>
-                  <input id="prizeProbability" type="number" min="0" max="100" value="10">
-                </div>
-                <label class="switch-row">
-                  <input id="prizeActive" type="checkbox" checked>
-                  Premio attivo
-                </label>
-              </div>
-              <div class="form-actions">
-                <button id="createPrizeBtn" type="button" class="secondary">Aggiungi premio</button>
-                <button id="resetPrizeBtn" type="button" class="ghost">Nuovo premio</button>
-              </div>
-            </div>
-          </section>
-
-          <div class="form-actions">
-            <button id="saveCampaignBtn" type="submit" class="primary">Salva campagna</button>
-            <button id="cancelEditBtnBottom" type="button" class="ghost">Annulla</button>
+            <button id="emojiApplyBtn" type="button" class="secondary hit">Usa questa</button>
+            <button id="emojiCloseBtn" type="button" class="ghost hit">Chiudi</button>
           </div>
-        </form>
-      </section>
 
-      <section id="tabMaterials" class="tab-panel hidden">
-        <div class="section-heading">
-          <div>
-            <h2>Materiali promozionali</h2>
-            <p class="muted">Crea locandine A4, grafiche per schermi LED/LCD e QR code per promuovere le campagne.</p>
-          </div>
-          <a href="/content.html" class="button primary">Apri generatore materiali</a>
-        </div>
-        <div class="card">
-          <h3>Formati disponibili</h3>
-          <div class="format-list">
-            <span class="pill">PDF A4 verticale</span>
-            <span class="pill">PNG 16:9</span>
-            <span class="pill">PNG 4:3</span>
-            <span class="pill">PNG verticale</span>
-            <span class="pill">PNG quadrato</span>
-            <span class="pill">QR SVG</span>
+          <label class="switch-row hit-row">
+            <input id="guaranteedWin" type="checkbox">
+            <span>Vince sempre qualcosa</span>
+          </label>
+          <p id="guaranteedWinHelp" class="field-help">Se attivo, ogni giocatore riceve uno dei premi disponibili. Se spento, una parte può non vincere.</p>
+
+          <div id="prizeLivePreview" class="live-preview" aria-live="polite"></div>
+
+          <div class="wizard-nav">
+            <button id="step1NextBtn" type="button" class="primary full hit">Continua</button>
           </div>
         </div>
+
+        <!-- PASSO 2 -->
+        <div id="wizardStep2" class="wizard-step hidden">
+          <h2>Come si gioca</h2>
+          <p class="muted">Scegli l’esperienza sul telefono del cliente.</p>
+
+          <div class="game-choice-grid" role="radiogroup" aria-label="Tipo di gioco">
+            <button type="button" class="game-choice hit" data-game="scratch_card" aria-pressed="true">
+              <strong>Gratta</strong>
+              <span>Classico e immediato</span>
+            </button>
+            <button type="button" class="game-choice hit" data-game="wheel" aria-pressed="false">
+              <strong>Ruota</strong>
+              <span>Forte con più premi</span>
+            </button>
+            <button type="button" class="game-choice hit" data-game="instant_reveal" aria-pressed="false">
+              <strong>Scatole</strong>
+              <span>Rapido su mobile</span>
+            </button>
+          </div>
+          <input id="gameType" type="hidden" value="scratch_card">
+
+          <div class="ticket-preview card" id="ticketPreview">
+            <div class="ticket-brand">
+              <div id="ticketLogo" class="brand-logo sm">GV</div>
+              <strong id="ticketStoreName">Negozio</strong>
+            </div>
+            <p id="ticketGameLabel" class="ticket-game">Gratta e vinci</p>
+            <p id="ticketPrizeHint" class="muted">Anteprima biglietto con il tuo brand</p>
+          </div>
+
+          <label for="campaignName">Nome promozione</label>
+          <input id="campaignName" type="text" placeholder="Promo Marzo">
+
+          <div class="form-row two">
+            <div>
+              <label for="startDate">Dal</label>
+              <input id="startDate" type="date">
+            </div>
+            <div>
+              <label for="endDate">Al</label>
+              <input id="endDate" type="date">
+            </div>
+          </div>
+
+          <label class="switch-row hit-row">
+            <input id="campaignActive" type="checkbox" checked>
+            <span>Promozione attiva</span>
+          </label>
+
+          <button id="openAdvancedBtn" type="button" class="linkish hit">Opzioni avanzate</button>
+
+          <div class="wizard-nav two-btn">
+            <button id="step2BackBtn" type="button" class="ghost hit">Indietro</button>
+            <button id="step2NextBtn" type="button" class="primary hit">Continua</button>
+          </div>
+        </div>
+
+        <!-- AVANZATE (link da passo 2) -->
+        <div id="wizardAdvanced" class="wizard-step hidden">
+          <h2>Opzioni avanzate</h2>
+          <p class="muted">Solo se ti serve cambiare i default.</p>
+
+          <h3>Dati giocatore</h3>
+          <p class="muted">Email obbligatoria di default.</p>
+          <div class="checkbox-grid">
+            <label><input type="checkbox" data-field="name" checked disabled> Nome obbligatorio</label>
+            <label><input type="checkbox" data-field="email" checked disabled> Email obbligatoria</label>
+            <label><input type="checkbox" data-field="phone"> Telefono</label>
+            <label><input type="checkbox" data-field="birthDate"> Data di nascita</label>
+            <label><input type="checkbox" data-field="marketingConsent"> Consenso marketing</label>
+          </div>
+
+          <label for="playLimitMode">Limite partecipazione</label>
+          <select id="playLimitMode">
+            <option value="per_campaign" selected>Una volta</option>
+            <option value="per_day">Una volta al giorno</option>
+          </select>
+
+          <label for="voucherValidityDays">Scadenza premio (giorni)</label>
+          <input id="voucherValidityDays" type="number" min="1" value="15">
+
+          <label for="loseMessage" id="loseMessageLabel">Messaggio se non vince</label>
+          <input id="loseMessage" type="text" value="Niente premio oggi — ci vediamo alla prossima!">
+
+          <label for="campaignDescription">Descrizione</label>
+          <textarea id="campaignDescription" rows="3" placeholder="Opzionale"></textarea>
+
+          <div class="wizard-nav">
+            <button id="closeAdvancedBtn" type="button" class="primary full hit">Torna al passo 2</button>
+          </div>
+        </div>
+
+        <!-- PASSO 3 -->
+        <div id="wizardStep3" class="wizard-step hidden">
+          <h2>Fai sapere che c’è</h2>
+          <p class="muted">Materiali pronti. Modifica i testi: valgono per tutti i formati.</p>
+
+          <label for="matHeadline">Titolo</label>
+          <input id="matHeadline" type="text">
+          <label for="matSubtitle">Sottotitolo</label>
+          <input id="matSubtitle" type="text">
+          <label for="matCta">Invito</label>
+          <input id="matCta" type="text">
+
+          <div class="materials-actions">
+            <a id="openMaterialsBtn" class="primary full hit" href="/content.html">Apri materiali e scarica</a>
+            <p class="muted small-note">Volantino A4 (stile festa), social, LED e LCD con logo, VINCI, QR e validità.</p>
+          </div>
+
+          <div id="playLinkBox" class="play-link-box card">
+            <p class="eyebrow">Gioco</p>
+            <input id="wizardPlayUrl" type="text" readonly>
+            <button id="copyWizardLinkBtn" type="button" class="secondary hit">Copia il link del gioco</button>
+          </div>
+
+          <div id="wizardDoneCard" class="done-card card hidden">
+            <h3>La tua promozione è attiva</h3>
+            <div class="stat-trio">
+              <div><span>Giocate</span><strong>0</strong></div>
+              <div><span>Vincite</span><strong>0</strong></div>
+              <div><span>Riscattati</span><strong>0</strong></div>
+            </div>
+            <button id="doneToDashBtn" type="button" class="primary full hit">Torna al cruscotto</button>
+          </div>
+
+          <div class="wizard-nav two-btn">
+            <button id="step3BackBtn" type="button" class="ghost hit">Indietro</button>
+            <button id="finishWizardBtn" type="button" class="primary hit">Fine</button>
+          </div>
+        </div>
       </section>
 
-      <section id="tabVouchers" class="tab-panel hidden">
+      <!-- ── ALTRO: Voucher / Giocatori / Piano / Profilo ── -->
+      <section id="viewVouchers" class="view-panel hidden">
         <div class="section-heading">
-          <div>
-            <h2>Validazione voucher</h2>
-            <p class="muted">Scansiona la card premio del cliente oppure inserisci manualmente il codice voucher.</p>
-          </div>
+          <h2>Valida un premio</h2>
+          <button type="button" class="ghost hit" data-view="dashboard">← Cruscotto</button>
         </div>
         <div class="card">
           <div class="scanner-actions">
-            <button id="scanQrBtn" type="button" class="secondary">Scansiona QR card premio</button>
-            <button id="stopScanBtn" type="button" class="ghost hidden">Ferma scanner</button>
+            <button id="scanQrBtn" type="button" class="secondary hit">Scansiona QR card premio</button>
+            <button id="stopScanBtn" type="button" class="ghost hit hidden">Ferma scanner</button>
           </div>
           <div id="scannerPanel" class="scanner-panel hidden">
             <video id="qrVideo" playsinline muted></video>
             <p id="scannerStatus" class="muted">Inquadra il QR della card premio.</p>
           </div>
           <div class="voucher-box">
-            <input id="voucherCode" type="text" placeholder="Codice voucher">
-            <button id="validateVoucherBtn" type="button" class="secondary">Verifica</button>
-            <button id="redeemVoucherBtn" type="button" class="primary">Riscatta</button>
+            <input id="voucherCode" type="text" placeholder="Codice premio">
+            <button id="validateVoucherBtn" type="button" class="secondary hit">Verifica</button>
+            <button id="redeemVoucherBtn" type="button" class="primary hit">Riscatta</button>
           </div>
           <div id="voucherResult"></div>
         </div>
         <div class="card">
-          <h3>Ultimi voucher</h3>
+          <h3>Ultimi premi</h3>
           <div id="vouchersTable" class="table-wrap"></div>
         </div>
       </section>
 
-      <section id="tabPlayers" class="tab-panel hidden">
+      <section id="viewPlayers" class="view-panel hidden">
         <div class="section-heading">
-          <div>
-            <h2>Giocatori</h2>
-            <p class="muted">Ultime partecipazioni registrate dal gioco.</p>
-          </div>
+          <h2>Giocatori</h2>
+          <button type="button" class="ghost hit" data-view="dashboard">← Cruscotto</button>
         </div>
         <div class="card">
           <div id="participationsTable" class="table-wrap"></div>
         </div>
       </section>
 
-      <section id="tabBilling" class="tab-panel hidden">
+      <section id="viewBilling" class="view-panel hidden">
         <div class="section-heading">
-          <div>
-            <h2>Piano e abbonamento</h2>
-            <p class="muted">Controlla lo stato del trial, confronta i piani e richiedi l’attivazione.</p>
-          </div>
+          <h2>Piano</h2>
+          <button type="button" class="ghost hit" data-view="dashboard">← Cruscotto</button>
         </div>
         <div id="billingStatus" class="billing-status card"></div>
         <div id="billingPlans" class="plan-grid"></div>
-        <p id="billingNote" class="muted billing-note">I pagamenti online arriveranno presto. Per ora l’attivazione avviene manualmente da admin o gestore.</p>
+        <p class="muted billing-note">I pagamenti online arriveranno presto. Per ora l’attivazione avviene da admin o gestore.</p>
       </section>
 
-      <section id="tabProfile" class="tab-panel hidden">
+      <section id="viewProfile" class="view-panel hidden">
         <div class="section-heading">
-          <div>
-            <h2>Profilo negozio</h2>
-            <p class="muted">Aggiorna brand e dati visibili nel gioco, nella card premio e nei materiali promozionali.</p>
-          </div>
+          <h2>Profilo</h2>
+          <button type="button" class="ghost hit" data-view="dashboard">← Cruscotto</button>
         </div>
         <form id="profileForm" class="profile-grid">
           <section class="card">
@@ -529,28 +328,30 @@
                 <input id="profileAddress" type="text">
               </div>
             </div>
-            <label for="profileLogoUrl">Logo URL</label>
+            <label for="profileLogoFile">Carica il tuo logo</label>
+            <input id="profileLogoFile" type="file" accept="image/*">
+            <p class="muted">Immagine ridimensionata sul telefono (max 256px). Se preferisci, puoi ancora usare un indirizzo web sotto.</p>
+            <label for="profileLogoUrl">Indirizzo logo (opzionale)</label>
             <input id="profileLogoUrl" type="url" placeholder="https://...">
             <div class="form-row two">
               <div>
-                <label for="profilePrimaryColor">Colore primario</label>
-                <input id="profilePrimaryColor" type="color" value="#667eea">
+                <label for="profilePrimaryColor">Colore 1</label>
+                <input id="profilePrimaryColor" type="color" value="#0f766e">
               </div>
               <div>
-                <label for="profileSecondaryColor">Colore secondario</label>
-                <input id="profileSecondaryColor" type="color" value="#764ba2">
+                <label for="profileSecondaryColor">Colore 2</label>
+                <input id="profileSecondaryColor" type="color" value="#134e4a">
               </div>
             </div>
-            <button id="saveProfileBtn" type="submit" class="primary">Salva profilo</button>
+            <button id="saveProfileBtn" type="submit" class="primary hit">Salva profilo</button>
           </section>
-
           <section class="card">
             <h3>Anteprima brand</h3>
             <div id="profilePreview" class="profile-preview">
               <div id="profilePreviewLogo" class="profile-preview-logo">GV</div>
               <p class="eyebrow">Gioco promozionale</p>
               <h2 id="profilePreviewName">Negozio</h2>
-              <p id="profilePreviewMeta" class="muted">Colori e dati compariranno su gioco e card premio.</p>
+              <p id="profilePreviewMeta" class="muted">Colori e logo sul gioco e sui materiali.</p>
             </div>
           </section>
         </form>
@@ -558,6 +359,7 @@
     </section>
   </main>
 
-  <script src="store.js?v=2.6.0"></script>
+  <script src="store-logic.js?v=3.0.0"></script>
+  <script src="store.js?v=3.0.0"></script>
 </body>
 </html>

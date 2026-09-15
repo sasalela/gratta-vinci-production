@@ -13,9 +13,47 @@ const password = document.getElementById('password');
 const phone = document.getElementById('phone');
 const address = document.getElementById('address');
 const logoUrl = document.getElementById('logoUrl');
+const logoFile = document.getElementById('logoFile');
 const primaryColor = document.getElementById('primaryColor');
 const secondaryColor = document.getElementById('secondaryColor');
 const termsAccepted = document.getElementById('termsAccepted');
+
+async function resizeLogoFile(file, maxPx = 256, maxBytes = 150 * 1024) {
+  if (!file || !file.type || !file.type.startsWith('image/')) {
+    throw new Error('Scegli un file immagine (PNG o JPG).');
+  }
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  let quality = 0.88;
+  let dataUrl = canvas.toDataURL('image/jpeg', quality);
+  while (dataUrl.length > maxBytes * 1.37 && quality > 0.4) {
+    quality -= 0.08;
+    dataUrl = canvas.toDataURL('image/jpeg', quality);
+  }
+  if (dataUrl.length > maxBytes * 1.37) {
+    throw new Error('Il logo resta troppo grande anche dopo la compressione.');
+  }
+  return dataUrl;
+}
+
+if (logoFile) {
+  logoFile.addEventListener('change', async () => {
+    const file = logoFile.files?.[0];
+    if (!file) return;
+    try {
+      logoUrl.value = await resizeLogoFile(file);
+    } catch (error) {
+      showError(error.message);
+    }
+  });
+}
 
 function show(el) {
   el.classList.remove('hidden');

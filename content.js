@@ -1,18 +1,15 @@
-// ─── Format registry ──────────────────────────────────────────────────────────
+// ─── Format registry (mirrors ContentLogic.FORMAT_SIZES) ──────────────────────
 
 const FORMAT_SIZES = {
-  // Print
   a4:       { width: 1240, height: 1754, label: 'A4 Volantino',         family: 'print'    },
-  // Social
   facebook: { width: 1200, height: 630,  label: 'Facebook Feed',        family: 'facebook' },
   square:   { width: 1080, height: 1080, label: 'Quadrato Feed',         family: 'social'   },
   vertical: { width: 1080, height: 1920, label: '9:16 Story post',       family: 'social'   },
   story:    { width: 1080, height: 1920, label: 'Story sequenza',        family: 'story'    },
-  // LED
   led_h:    { width: 1920, height: 576,  label: 'LED orizzontale',       family: 'led'      },
   led_v:    { width: 576,  height: 1024, label: 'LED verticale',         family: 'led'      },
   led_sq:   { width: 800,  height: 800,  label: 'LED quadrato',          family: 'led'      },
-  // LCD
+  led_43:   { width: 1024, height: 768,  label: 'LED 4:3',               family: 'led'      },
   '16x9':   { width: 1920, height: 1080, label: 'LCD 16:9 orizzontale',  family: 'lcd'      },
   '4x3':    { width: 1600, height: 1200, label: 'LCD 4:3 orizzontale',   family: 'lcd'      },
   lcd_v:    { width: 1080, height: 1920, label: 'LCD verticale',         family: 'lcd'      },
@@ -114,16 +111,43 @@ function getPlayUrl(campaign) {
   return `${window.location.origin}/?store=${state.store.slug}&campaign=${campaign.slug}`;
 }
 
+/** QR caption shared by every format (Rule D element 3). */
+const QR_SCAN_LABEL = 'Inquadra e gioca';
+
+/** Legacy / empty field values — replaced when applying campaign defaults. */
+const LEGACY_TEXT_DEFAULTS = {
+  headline: new Set(['', 'Inquadra e vinci']),
+  subtitle: new Set(['', 'Partecipa e scopri subito il tuo premio.']),
+  cta: new Set(['', 'Gioca ora']),
+};
+
 function getMainPrize(campaign) {
-  const prizes = campaign.prizeItems || [];
-  const valid = prizes.filter(
-    (p) => p.active === true && p.totalQuantity > 0 && p.winProbability > 0
-  );
-  if (!valid.length) return null;
-  return valid.sort((a, b) => {
-    if (a.winProbability !== b.winProbability) return a.winProbability - b.winProbability;
-    return a.totalQuantity - b.totalQuantity;
-  })[0];
+  return ContentLogic.getMainPrize(campaign);
+}
+
+function getMaterialDefaults(campaign) {
+  return ContentLogic.getMaterialDefaults(campaign);
+}
+
+function getVinciHeading(campaign) {
+  return ContentLogic.getVinciHeading(campaign);
+}
+
+function applyMaterialDefaultsIfNeeded(campaign, prevCampaign) {
+  const defs = getMaterialDefaults(campaign);
+  const prev = prevCampaign ? getMaterialDefaults(prevCampaign) : null;
+  const h = headlineInput.value.trim();
+  const s = subtitleInput.value.trim();
+  const c = ctaInput.value.trim();
+  if (LEGACY_TEXT_DEFAULTS.headline.has(h) || (prev && h === prev.headline)) {
+    headlineInput.value = defs.headline;
+  }
+  if (LEGACY_TEXT_DEFAULTS.subtitle.has(s) || (prev && s === prev.subtitle)) {
+    subtitleInput.value = defs.subtitle;
+  }
+  if (LEGACY_TEXT_DEFAULTS.cta.has(c) || (prev && c === prev.cta)) {
+    ctaInput.value = defs.cta;
+  }
 }
 
 function formatDate(value) {
@@ -756,10 +780,12 @@ function logA4Hierarchy(h, concept) {
 // Looks like an already-scratched winning ticket. Dark + gold = "jackpot".
 function renderPrintWinA(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height, cx = W / 2;
-  const { prizeText, storeName, expiresText, logoImage } = data;
+  const { prizeText, storeName, expiresText, logoImage, cta, vinciTitle } = data;
   const GOLD = '#f6c945', DARK = '#0b1020';
   const prize = stripEmoji(prizeText) || 'UN PREMIO';
   const h = computeA4Hierarchy(data, W);
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
+  const invito = (cta || 'Gioca ora').toUpperCase();
 
   // Background + warm spotlight behind the prize
   ctx.fillStyle = DARK; ctx.fillRect(0, 0, W, H);
@@ -770,21 +796,19 @@ function renderPrintWinA(ctx, canvas, qrImage, data) {
 
   // ── Store name — prominent, never a footnote ──
   let y = Math.round(H * 0.05);
-  if (logoImage) {
-    const ls = Math.round(W * 0.08);
-    drawLogo(ctx, logoImage, cx - ls / 2, y, ls, GOLD, 12);
-    y += ls + 14;
-  }
+  const lsA = Math.round(W * 0.08);
+  drawLogo(ctx, logoImage, cx - lsA / 2, y, lsA, GOLD, 12);
+  y += lsA + 14;
   ctx.font = `800 ${h.storeSize}px ${FONT}`;
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText((storeName || '').toUpperCase(), cx, y);
   y += Math.round(h.storeSize * 1.25);
 
-  // "HAI VINTO" eyebrow — frames the win as already happened (sized as CTA)
+  // VINCI / VINCI SEMPRE eyebrow
   ctx.font = `900 ${h.ctaSize}px ${FONT}`;
   ctx.fillStyle = GOLD;
-  ctx.fillText('HAI VINTO', cx, y);
+  ctx.fillText(vinciLabel, cx, y);
   y += Math.round(h.ctaSize * 1.12);
   ctx.textBaseline = 'alphabetic';
 
@@ -830,19 +854,19 @@ function renderPrintWinA(ctx, canvas, qrImage, data) {
   roundedRect(ctx, cardX + 13, cardY + 13, cardW - 26, cardH - 26, 20); ctx.stroke();
   ctx.setLineDash([]);
 
-  // ── CTA — second most visible element ──
+  // ── Invito ──
   ctx.font = `900 ${h.ctaSize}px ${FONT}`;
   ctx.fillStyle = DARK; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('SCANSIONA E GIOCA', cx, cardY + pad);
+  ctx.fillText(invito, cx, cardY + pad);
   ctx.textBaseline = 'alphabetic';
   const qrTop = cardY + pad + h.ctaSize + Math.round(pad * 0.6);
   drawQrBlock(ctx, qrImage, cx, qrTop, qrSz, pad, 16, '#ffffff');
 
-  // QR label — helper caption under the card
+  // QR label
   const labelY = cardY + cardH + Math.round(H * 0.022);
   ctx.font = `700 ${h.qrLabelSize}px ${FONT}`;
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('Scopri se il premio è tuo', cx, labelY);
+  ctx.fillText(QR_SCAN_LABEL, cx, labelY);
   ctx.textBaseline = 'alphabetic';
 
   // Expiry / urgency — smallest
@@ -857,10 +881,12 @@ function renderPrintWinA(ctx, canvas, qrImage, data) {
 // Wheel-of-fortune energy. The QR sits at the centre of the wheel = "spin to win".
 function renderPrintLuckB(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height, cx = W / 2;
-  const { primary, secondary, prizeText, storeName, expiresText, logoImage } = data;
+  const { primary, secondary, prizeText, storeName, expiresText, logoImage, cta, vinciTitle } = data;
   const P = primary || '#7c3aed', S = secondary || '#ec4899';
   const prize = stripEmoji(prizeText) || 'UN PREMIO';
   const h = computeA4Hierarchy(data, W);
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
+  const invito = (cta || 'Gioca ora').toUpperCase();
 
   // Vibrant diagonal gradient + confetti
   const bg = ctx.createLinearGradient(0, 0, W, H);
@@ -870,11 +896,9 @@ function renderPrintLuckB(ctx, canvas, qrImage, data) {
 
   // ── Store name — prominent ──
   let y = Math.round(H * 0.04);
-  if (logoImage) {
-    const ls = Math.round(W * 0.07);
-    drawLogo(ctx, logoImage, cx - ls / 2, y, ls, '#ffffff', 12);
-    y += ls + 12;
-  }
+  const lsB = Math.round(W * 0.07);
+  drawLogo(ctx, logoImage, cx - lsB / 2, y, lsB, '#ffffff', 12);
+  y += lsB + 12;
   ctx.font = `800 ${h.storeSize}px ${FONT}`;
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -882,11 +906,11 @@ function renderPrintLuckB(ctx, canvas, qrImage, data) {
   y += Math.round(h.storeSize * 1.2);
   ctx.textBaseline = 'alphabetic';
 
-  // Eyebrow "IN PALIO" + PRIZE — dominant
+  // VINCI / VINCI SEMPRE + PRIZE
   ctx.font = `800 ${Math.round(h.expirySize * 1.05)}px ${FONT}`;
   ctx.fillStyle = 'rgba(255,255,255,0.8)';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('IN PALIO', cx, y);
+  ctx.fillText(vinciLabel, cx, y);
   y += Math.round(h.expirySize * 1.4);
   ctx.textBaseline = 'alphabetic';
 
@@ -912,14 +936,14 @@ function renderPrintLuckB(ctx, canvas, qrImage, data) {
   const ctaY = cyW + R + Math.round(H * 0.028);
   ctx.font = `900 ${h.ctaSize}px ${FONT}`;
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('GIRA E VINCI', cx, ctaY);
+  ctx.fillText(invito, cx, ctaY);
   ctx.textBaseline = 'alphabetic';
 
   // QR label — helper caption
   const labelY = ctaY + Math.round(h.ctaSize * 1.12);
   ctx.font = `700 ${h.qrLabelSize}px ${FONT}`;
   ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('Inquadra e scopri se hai vinto', cx, labelY);
+  ctx.fillText(QR_SCAN_LABEL, cx, labelY);
   ctx.textBaseline = 'alphabetic';
 
   // Expiry / free-try reducer — smallest, very bottom
@@ -935,10 +959,12 @@ function renderPrintLuckB(ctx, canvas, qrImage, data) {
 // FOMO. Dark stage + red alert. Depletion bar screams "almost gone".
 function renderPrintScarcityC(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height, cx = W / 2;
-  const { prizeText, storeName, expiresText, logoImage } = data;
+  const { prizeText, storeName, expiresText, logoImage, cta, vinciTitle } = data;
   const RED = '#ef2d56', DARK = '#0f1115';
   const prize = stripEmoji(prizeText) || 'UN PREMIO';
   const h = computeA4Hierarchy(data, W);
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
+  const invito = (cta || 'Gioca ora').toUpperCase();
 
   ctx.fillStyle = DARK; ctx.fillRect(0, 0, W, H);
 
@@ -952,21 +978,19 @@ function renderPrintScarcityC(ctx, canvas, qrImage, data) {
 
   // ── Store name — prominent ──
   let y = barH + Math.round(H * 0.025);
-  if (logoImage) {
-    const ls = Math.round(W * 0.07);
-    drawLogo(ctx, logoImage, cx - ls / 2, y, ls, RED, 12);
-    y += ls + 10;
-  }
+  const lsC = Math.round(W * 0.07);
+  drawLogo(ctx, logoImage, cx - lsC / 2, y, lsC, RED, 12);
+  y += lsC + 10;
   ctx.font = `800 ${h.storeSize}px ${FONT}`;
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText((storeName || '').toUpperCase(), cx, y);
   y += Math.round(h.storeSize * 1.2);
 
-  // Scarcity eyebrow
+  // VINCI / VINCI SEMPRE
   ctx.font = `800 ${Math.round(h.expirySize * 1.05)}px ${FONT}`;
   ctx.fillStyle = RED;
-  ctx.fillText('ULTIMI PREMI DISPONIBILI', cx, y);
+  ctx.fillText(vinciLabel, cx, y);
   y += Math.round(h.expirySize * 1.5);
   ctx.textBaseline = 'alphabetic';
 
@@ -1008,7 +1032,7 @@ function renderPrintScarcityC(ctx, canvas, qrImage, data) {
   // CTA — second most visible
   ctx.font = `900 ${h.ctaSize}px ${FONT}`;
   ctx.fillStyle = RED; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('PRENDI IL TUO', cx, cardY + pad);
+  ctx.fillText(invito, cx, cardY + pad);
   ctx.textBaseline = 'alphabetic';
   const qrTop = cardY + pad + h.ctaSize + Math.round(pad * 0.6);
   drawQrBlock(ctx, qrImage, cx, qrTop, qrSz, pad, 16, '#ffffff');
@@ -1017,7 +1041,7 @@ function renderPrintScarcityC(ctx, canvas, qrImage, data) {
   const labelY = cardY + cardH + Math.round(H * 0.02);
   ctx.font = `700 ${h.qrLabelSize}px ${FONT}`;
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('Scansiona e prendi il tuo premio', cx, labelY);
+  ctx.fillText(QR_SCAN_LABEL, cx, labelY);
   ctx.textBaseline = 'alphabetic';
 
   // Expiry — smallest
@@ -1156,22 +1180,28 @@ function drawStopwatchIcon(ctx, cx, cy, s, color) {
 
 function renderPrintFestaD(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height, cx = W / 2;
-  const { prizeText, storeName, expiresText, logoImage } = data;
+  const {
+    prizeText, storeName, expiresText, logoImage,
+    headline, subtitle, cta, vinciTitle
+  } = data;
   const prize = stripEmoji(prizeText) || 'UN PREMIO';
   const side = Math.round(W * 0.05);
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
+  const invito = (cta || 'Gioca ora').trim();
+  const titolo = (headline || '').trim();
+  const sottotitolo = (subtitle || '').trim();
 
   // White background
   ctx.fillStyle = FESTA.white; ctx.fillRect(0, 0, W, H);
 
-  // ── Store name banner ──
-  let y = Math.round(H * 0.03);
-  if (logoImage) {
-    const ls = Math.round(W * 0.085);
-    drawLogo(ctx, logoImage, cx - ls / 2, y, ls, FESTA.red, 14);
-    y += ls + 10;
-  }
+  // ── 1. Logo (or initials) + store name ──
+  let y = Math.round(H * 0.028);
+  const ls = Math.round(W * 0.085);
+  drawLogo(ctx, logoImage, cx - ls / 2, y, ls, FESTA.red, 14);
+  y += ls + 10;
+
   const storeText = (storeName || '').toUpperCase();
-  let stSize = Math.round(W * 0.088);
+  let stSize = Math.round(W * 0.078);
   do {
     ctx.font = `900 ${stSize}px ${FONT}`;
     if (ctx.measureText(storeText).width <= W * 0.9) break;
@@ -1184,20 +1214,25 @@ function renderPrintFestaD(ctx, canvas, qrImage, data) {
   y = y + stSize + Math.round(H * 0.006);
 
   // Flourish: red line · star · red line
-  const fy = y + Math.round(H * 0.012);
+  const fy = y + Math.round(H * 0.01);
   ctx.strokeStyle = FESTA.red; ctx.lineWidth = Math.round(H * 0.005); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(cx - W * 0.18, fy); ctx.lineTo(cx - W * 0.05, fy); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(cx + W * 0.05, fy); ctx.lineTo(cx + W * 0.18, fy); ctx.stroke();
   ctx.lineCap = 'butt';
   ctx.fillStyle = FESTA.yellow; drawStar(ctx, cx, fy, W * 0.022, W * 0.01, 5);
-  y = fy + Math.round(H * 0.02);
+  y = fy + Math.round(H * 0.018);
 
-  // ── Prize bands — the dominant element ──
+  // ── 2. VINCI / VINCI SEMPRE + prize ──
+  ctx.font = `900 ${Math.round(W * 0.052)}px ${FONT}`;
+  ctx.fillStyle = FESTA.red; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(vinciLabel, cx, y);
+  y += Math.round(W * 0.06);
+
   const lines = festaPrizeLines(prize);
   const bandsTop = y;
-  const bandsBot = Math.round(H * 0.575);
+  const bandsBot = Math.round(H * (titolo || sottotitolo ? 0.48 : 0.52));
   const gap = Math.round(H * 0.006);
-  const bandH = Math.floor((bandsBot - bandsTop - gap * (lines.length - 1)) / lines.length);
+  const bandH = Math.floor((bandsBot - bandsTop - gap * (lines.length - 1)) / Math.max(lines.length, 1));
   const bandW = Math.round(W * 0.9);
 
   lines.forEach((line, i) => {
@@ -1213,12 +1248,33 @@ function renderPrintFestaD(ctx, canvas, qrImage, data) {
     const color = style === 'redText' ? FESTA.red : style === 'yellowBand' ? FESTA.navy : FESTA.white;
     drawFestaLine(ctx, line, cx, by + bandH / 2, bandW * 0.82, Math.round(bandH * 0.74), color);
   });
+  y = bandsBot + Math.round(H * 0.012);
 
-  // ── CTA with chevrons ──
-  const ctaY = bandsBot + Math.round(H * 0.022);
-  const ctaSize = Math.round(W * 0.046);
+  // Titolo / Sottotitolo (editable fields)
+  if (titolo) {
+    y = drawTextBlock(ctx, {
+      text: titolo, x: cx, y,
+      maxWidth: W * 0.88, maxHeight: Math.round(H * 0.055),
+      startSize: Math.round(W * 0.038), minSize: 22,
+      weight: 800, color: FESTA.navy, maxLines: 2, lineRatio: 1.1
+    });
+    y += Math.round(H * 0.008);
+  }
+  if (sottotitolo) {
+    y = drawTextBlock(ctx, {
+      text: sottotitolo, x: cx, y,
+      maxWidth: W * 0.82, maxHeight: Math.round(H * 0.045),
+      startSize: Math.round(W * 0.028), minSize: 18,
+      weight: 600, color: '#4b5563', maxLines: 2, lineRatio: 1.2
+    });
+    y += Math.round(H * 0.01);
+  }
+
+  // ── Invito ──
+  const ctaY = y + Math.round(H * 0.008);
+  const ctaSize = Math.round(W * 0.042);
   ctx.font = `900 ${ctaSize}px ${FONT}`;
-  const ctaText = 'SCANSIONA E GIOCA ORA!';
+  const ctaText = invito.toUpperCase();
   const ctaW = ctx.measureText(ctaText).width;
   ctx.fillStyle = FESTA.navy; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(ctaText, cx, ctaY);
@@ -1227,37 +1283,24 @@ function renderPrintFestaD(ctx, canvas, qrImage, data) {
   ctx.textAlign = 'right'; ctx.fillText('«', cx + ctaW / 2 + W * 0.05, ctaY);
   ctx.textBaseline = 'alphabetic';
 
-  // ── Central QR flanked by trophy (left) and gift (right) ──
-  const qrSz  = Math.round(W * 0.34);
-  const qrTop = ctaY + Math.round(H * 0.03);
+  // ── 3. QR + Inquadra e gioca ──
+  const qrSz  = Math.round(W * 0.30);
+  const qrTop = ctaY + Math.round(H * 0.028);
   const qrPad = Math.round(qrSz * 0.07);
   roundedRect(ctx, cx - qrSz / 2 - qrPad, qrTop - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 18);
   ctx.fillStyle = '#fff'; ctx.fill();
   ctx.strokeStyle = FESTA.navy; ctx.lineWidth = 4;
   roundedRect(ctx, cx - qrSz / 2 - qrPad, qrTop - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 18); ctx.stroke();
   ctx.drawImage(qrImage, cx - qrSz / 2, qrTop, qrSz, qrSz);
-  const qrMidY = qrTop + qrSz / 2;
 
-  const iconR = Math.round(W * 0.075);
-  const lX = Math.round(W * 0.145), rX = Math.round(W * 0.855);
-  const labelSize = Math.round(W * 0.026);
-
-  drawIconCircle(ctx, lX, qrMidY, iconR, FESTA.red);
-  drawTrophyIcon(ctx, lX, qrMidY, iconR * 1.15);
-  drawIconCircle(ctx, rX, qrMidY, iconR, FESTA.yellow);
-  drawGiftIcon(ctx, rX, qrMidY, iconR * 1.15);
-
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.font = `800 ${labelSize}px ${FONT}`;
-  ctx.fillStyle = FESTA.navy; ctx.fillText('SCOPRI SUBITO', lX, qrMidY + iconR + 14);
-  ctx.fillStyle = FESTA.red;  ctx.fillText('SE HAI VINTO', lX, qrMidY + iconR + 14 + labelSize * 1.2);
-  ctx.fillStyle = FESTA.navy; ctx.fillText('PREMI', rX, qrMidY + iconR + 14);
-  ctx.fillStyle = FESTA.red;  ctx.fillText('IMMEDIATI', rX, qrMidY + iconR + 14 + labelSize * 1.2);
+  ctx.font = `800 ${Math.round(W * 0.032)}px ${FONT}`;
+  ctx.fillStyle = FESTA.navy; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(QR_SCAN_LABEL.toUpperCase(), cx, qrTop + qrSz + qrPad + 8);
   ctx.textBaseline = 'alphabetic';
 
-  // ── Bottom dark bar: stopwatch + free participation + expiry ──
-  const barH = Math.round(H * 0.095);
-  const barY = H - barH - Math.round(H * 0.03);
+  // ── 4. Validity ──
+  const barH = Math.round(H * 0.08);
+  const barY = H - barH - Math.round(H * 0.025);
   roundedRect(ctx, side, barY, W - side * 2, barH, 22);
   ctx.fillStyle = FESTA.navy; ctx.fill();
   const barMid = barY + barH / 2;
@@ -1280,7 +1323,7 @@ function renderPrintFestaD(ctx, canvas, qrImage, data) {
     ctx.fillStyle = '#fff';       ctx.font = `700 ${Math.round(colSize * 0.82)}px ${FONT}`;
     ctx.fillText('VALIDO FINO AL', rightCx, barMid - colSize * 0.6);
     ctx.fillStyle = FESTA.yellow; ctx.font = `900 ${colSize}px ${FONT}`;
-    ctx.fillText(dateOnly, rightCx, barMid + colSize * 0.6);
+    ctx.fillText(dateOnly || expiresText, rightCx, barMid + colSize * 0.6);
   }
   ctx.textBaseline = 'alphabetic';
 }
@@ -1307,7 +1350,7 @@ function renderPrintConcept(ctx, canvas, qrImage, data) {
 function renderFacebook(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
   const { primary, secondary, headline, subtitle, cta, prizeText,
-    storeName, campaignName, expiresText, logoImage } = data;
+    storeName, expiresText, logoImage, vinciTitle } = data;
 
   const split = Math.round(W * 0.58);   // content | QR split
   const pad   = Math.round(H * 0.1);
@@ -1330,7 +1373,7 @@ function renderFacebook(ctx, canvas, qrImage, data) {
 
   const lCx = split / 2;
 
-  // Logo + store name in top-left
+  // 1. Logo + store name
   const lSz = Math.round(H * 0.18);
   const lY  = pad;
   drawLogo(ctx, logoImage, pad, lY, lSz, '#ffffff', 10);
@@ -1350,33 +1393,41 @@ function renderFacebook(ctx, canvas, qrImage, data) {
   ctx.moveTo(pad, lY + lSz + 16); ctx.lineTo(split - pad, lY + lSz + 16);
   ctx.stroke();
 
-  // Campaign eyebrow
+  // 2. VINCI / VINCI SEMPRE (never campaign name)
   const eyebrowY = lY + lSz + 28;
-  if (campaignName) {
-    ctx.font = `600 ${Math.round(H * 0.044)}px ${FONT}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.72)';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const eTxt = campaignName.length > 30 ? campaignName.slice(0, 29) + '…' : campaignName;
-    ctx.fillText(eTxt, pad, eyebrowY);
-  }
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
+  ctx.font = `800 ${Math.round(H * 0.048)}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.78)';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(vinciLabel, pad, eyebrowY);
 
-  // Headline — BIG
-  const hlY = eyebrowY + (campaignName ? Math.round(H * 0.07) : 0);
+  // Titolo (editable) — big
+  const hlY = eyebrowY + Math.round(H * 0.07);
   drawTextBlock(ctx, {
-    text: headline, x: pad, y: hlY,
+    text: headline || vinciLabel, x: pad, y: hlY,
     maxWidth: split - pad * 2,
-    maxHeight: Math.round(H * 0.32),
-    startSize: Math.round(H * 0.14), minSize: Math.round(H * 0.08),
+    maxHeight: Math.round(H * 0.22),
+    startSize: Math.round(H * 0.12), minSize: Math.round(H * 0.07),
     weight: 900, color: '#ffffff', maxLines: 2, lineRatio: 1.08, align: 'left'
   });
 
-  // Prize pill at bottom of left panel
+  // Prize + optional sottotitolo near bottom of left panel
+  let prizeY = H - pad - Math.round(H * 0.1);
+  if (subtitle) {
+    ctx.font = `500 ${Math.round(H * 0.038)}px ${FONT}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    const sub = subtitle.length > 42 ? subtitle.slice(0, 41) + '…' : subtitle;
+    ctx.fillText(sub, pad, prizeY - Math.round(H * 0.02));
+    ctx.textBaseline = 'alphabetic';
+  }
   if (prizeText) {
     ctx.font = `800 ${Math.round(H * 0.056)}px ${FONT}`;
     const pW = Math.min(ctx.measureText(prizeText).width + 50, split - pad * 2);
     const pH = Math.round(H * 0.1);
-    roundedRect(ctx, pad, H - pad - pH, pW, pH, pH / 2);
+    roundedRect(ctx, pad, prizeY, pW, pH, pH / 2);
     ctx.fillStyle = 'rgba(255,255,255,0.2)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.4)';
@@ -1385,28 +1436,35 @@ function renderFacebook(ctx, canvas, qrImage, data) {
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(prizeText, pad + 20, H - pad - pH / 2);
+    ctx.fillText(prizeText, pad + 20, prizeY + pH / 2);
     ctx.textBaseline = 'alphabetic';
   }
 
-  // ── RIGHT PANEL: white, QR + CTA ─────────────────────────────────────────
+  // ── RIGHT PANEL: white, QR + Invito + validity ───────────────────────────
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(split, 0, W - split, H);
 
-  // Accent left border
   ctx.fillStyle = primary;
   ctx.fillRect(split, 0, 4, H);
 
   const rCx    = split + (W - split) / 2;
   const rH     = H - pad * 2;
-  const ctaH   = Math.round(H * 0.13);
-  const qrSz   = Math.min(Math.round(rH * 0.54), Math.round((W - split) * 0.68));
+  const ctaH   = Math.round(H * 0.11);
+  const labelH = Math.round(H * 0.05);
+  const qrSz   = Math.min(Math.round(rH * 0.48), Math.round((W - split) * 0.68));
   const qrPad  = Math.round(qrSz * 0.07);
-  const totalH = qrSz + qrPad * 2 + 20 + ctaH;
-  const qrY    = pad + (rH - totalH) / 2;
+  const totalH = labelH + qrSz + qrPad * 2 + 16 + ctaH;
+  const blockY = pad + (rH - totalH) / 2;
 
+  ctx.font = `800 ${Math.round(H * 0.04)}px ${FONT}`;
+  ctx.fillStyle = '#0f172a';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(QR_SCAN_LABEL, rCx, blockY);
+
+  const qrY = blockY + labelH + 4;
   drawQrBlock(ctx, qrImage, rCx, qrY, qrSz, qrPad, Math.round(qrSz * 0.07));
-  drawCtaButton(ctx, cta, rCx, qrY + qrSz + qrPad * 2 + 20, (W - split) * 0.76, ctaH, primary, secondary);
+  drawCtaButton(ctx, cta, rCx, qrY + qrSz + qrPad * 2 + 12, (W - split) * 0.76, ctaH, primary, secondary);
 
   if (expiresText) {
     ctx.font = `400 ${Math.round(H * 0.038)}px ${FONT}`;
@@ -1472,48 +1530,58 @@ function socialBandInk(accent) {
 
 function socialEyebrow(headline) {
   const h = (headline || '').trim();
-  return (h && h.toLowerCase() !== 'inquadra e vinci') ? h.toUpperCase() : 'POTRESTI AVER VINTO';
+  return h ? h.toUpperCase() : 'VINCI';
 }
 function socialCtaText(cta) {
   const c = (cta || '').trim();
-  return (c && c.toLowerCase() !== 'gioca ora') ? c.toUpperCase() : 'SCANSIONA E GIOCA';
+  return (c || 'Gioca ora').toUpperCase();
 }
 
 function renderSocial(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
   const isSquare = W === H;
-  const { primary, secondary, headline, cta, prizeText, storeName, expiresText } = data;
+  const { primary, secondary, headline, subtitle, cta, prizeText, storeName, expiresText, logoImage, vinciTitle } = data;
   const cx = W / 2;
   const prize   = (stripEmoji(prizeText) || 'UN PREMIO').toUpperCase();
   const eyebrow = socialEyebrow(headline);
   const ctaText = socialCtaText(cta);
   const accent  = socialAccent(secondary);
   const ink     = socialBandInk(accent);
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
   const plines  = festaPrizeLines(prize);
   const burstLen = Math.round(W * 0.038);
 
   drawSocialBg(ctx, W, H, primary, secondary);
 
-  // ── Store name: "— NOME —" ──
-  let y = Math.round(H * (isSquare ? 0.042 : 0.038));
+  // ── 1. Logo + store name ──
+  let y = Math.round(H * (isSquare ? 0.032 : 0.028));
+  const lSz = Math.round(W * (isSquare ? 0.12 : 0.14));
+  drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, '#ffffff', Math.round(lSz * 0.18));
+  y += lSz + Math.round(H * 0.012);
+
   const snLabel = '— ' + storeName.toUpperCase() + ' —';
-  let snSz = Math.round(W * (isSquare ? 0.038 : 0.04));
-  do { ctx.font = `700 ${snSz}px ${FONT}`; if (ctx.measureText(snLabel).width <= W * 0.92) break; snSz -= 2; } while (snSz > 22);
+  let snSz = Math.round(W * (isSquare ? 0.034 : 0.036));
+  do { ctx.font = `700 ${snSz}px ${FONT}`; if (ctx.measureText(snLabel).width <= W * 0.92) break; snSz -= 2; } while (snSz > 18);
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText(snLabel, cx, y);
-  y += Math.round(snSz * (isSquare ? 1.65 : 1.75));
+  y += Math.round(snSz * (isSquare ? 1.55 : 1.65));
 
-  // ── Eyebrow hook ──
-  const ebSz = Math.round(W * (isSquare ? 0.058 : 0.072));
+  // Titolo (editable — replaces Potresti aver vinto)
+  const ebSz = Math.round(W * (isSquare ? 0.048 : 0.056));
   ctx.font = `900 ${ebSz}px ${FONT}`; ctx.fillStyle = '#ffffff';
   const ebLines = wrapTextLines(ctx, eyebrow, W * 0.9);
   ebLines.slice(0, 2).forEach((line, i) => ctx.fillText(line, cx, y + Math.round(ebSz * 1.08 * i)));
-  y += Math.round(ebSz * (ebLines.length > 1 ? 2.2 : 1.15) + H * (isSquare ? 0.018 : 0.024));
+  y += Math.round(ebSz * (ebLines.length > 1 ? 2.15 : 1.12) + H * 0.012);
 
-  // ── Prize hero — accent brush band + yellow bursts ──
-  let lineSz = Math.round(W * (isSquare ? (plines.length >= 3 ? 0.088 : 0.102) : 0.112));
+  // ── 2. VINCI / VINCI SEMPRE + prize bands ──
+  ctx.font = `800 ${Math.round(W * 0.036)}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText(vinciLabel, cx, y);
+  y += Math.round(W * 0.048);
+
+  let lineSz = Math.round(W * (isSquare ? (plines.length >= 3 ? 0.078 : 0.092) : 0.1));
   const lineH = Math.round(lineSz * 1.08);
-  const bandPadY = Math.round(H * 0.014);
+  const bandPadY = Math.round(H * 0.012);
   const bandH = lineH * plines.length + bandPadY * 2;
   const bandW = Math.round(W * 0.92);
   drawBrushBand(ctx, cx - bandW / 2, y, bandW, bandH, accent);
@@ -1522,30 +1590,30 @@ function renderSocial(ctx, canvas, qrImage, data) {
   plines.forEach((line, i) => {
     drawFestaLine(ctx, line, cx, y + bandPadY + lineH * i + lineH / 2, bandW * 0.86, lineSz, ink);
   });
-  y += bandH + Math.round(H * (isSquare ? 0.022 : 0.028));
+  y += bandH + Math.round(H * (isSquare ? 0.016 : 0.02));
 
-  // ── "Scoprilo ora" + yellow arrow (vertical) ──
-  if (!isSquare) {
-    ctx.font = `800 ${Math.round(W * 0.048)}px ${FONT}`; ctx.fillStyle = '#ffffff';
-    ctx.fillText('SCOPRILO ORA', cx + W * 0.04, y);
-    drawCurvedArrow(ctx, cx - W * 0.15, y + W * 0.018, cx - W * 0.02, y + W * 0.065,
-      FESTA.yellow, Math.round(W * 0.012));
-    y += Math.round(H * 0.048);
+  if (subtitle) {
+    y = drawTextBlock(ctx, {
+      text: subtitle, x: cx, y,
+      maxWidth: W * 0.84, maxHeight: Math.round(H * 0.06),
+      startSize: Math.round(W * 0.032), minSize: 18,
+      weight: 500, color: 'rgba(255,255,255,0.72)', maxLines: 2, lineRatio: 1.25
+    });
+    y += Math.round(H * 0.012);
   }
 
-  // ── Bottom stack: CTA band + esito + expiry ──
-  const ctaBandH = Math.round(W * (isSquare ? 0.105 : 0.108));
-  const esitoH   = isSquare ? 0 : Math.round(H * 0.048);
-  const expH     = expiresText ? Math.round(H * 0.042) : Math.round(H * 0.02);
-  const bottomPad = Math.round(H * 0.028);
-  const ctaBandY = H - bottomPad - expH - esitoH - ctaBandH;
+  // ── Bottom: QR + Inquadra e gioca + Invito + validity ──
+  const ctaBandH = Math.round(W * (isSquare ? 0.1 : 0.102));
+  const scanH    = Math.round(H * 0.032);
+  const expH     = expiresText ? Math.round(H * 0.038) : Math.round(H * 0.016);
+  const bottomPad = Math.round(H * 0.024);
+  const ctaBandY = H - bottomPad - expH - ctaBandH;
 
-  // ── QR — large white card + yellow bursts ──
-  const qrPad = Math.round(W * 0.034);
+  const qrPad = Math.round(W * 0.03);
   const zoneTop = y;
-  const zoneBot = ctaBandY - Math.round(H * 0.02);
+  const zoneBot = ctaBandY - scanH - Math.round(H * 0.02);
   const qrMax  = Math.max(0, zoneBot - zoneTop - qrPad * 2);
-  const qrSz   = Math.round(Math.min(W * (isSquare ? 0.44 : 0.48), qrMax));
+  const qrSz   = Math.round(Math.min(W * (isSquare ? 0.4 : 0.42), qrMax));
   const cardWH = qrSz + qrPad * 2;
   const qrCardY = zoneTop + Math.max(0, Math.floor((zoneBot - zoneTop - cardWH) / 2));
   roundedRect(ctx, cx - cardWH / 2, qrCardY, cardWH, cardWH, Math.round(W * 0.028));
@@ -1554,7 +1622,10 @@ function renderSocial(ctx, canvas, qrImage, data) {
   drawBurst(ctx, cx - cardWH / 2 - W * 0.028, qrCardY + cardWH / 2, burstLen, FESTA.yellow);
   drawBurst(ctx, cx + cardWH / 2 + W * 0.028, qrCardY + cardWH / 2, burstLen, FESTA.yellow);
 
-  // ── CTA on accent brush band (reference — not white pill) ──
+  ctx.font = `800 ${Math.round(W * 0.032)}px ${FONT}`;
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(QR_SCAN_LABEL.toUpperCase(), cx, qrCardY + cardWH + 6);
+
   const ctaBandW = Math.round(W * 0.88);
   drawBrushBand(ctx, cx - ctaBandW / 2, ctaBandY, ctaBandW, ctaBandH, accent);
   let ctaSz = Math.round(ctaBandH * 0.38);
@@ -1567,15 +1638,10 @@ function renderSocial(ctx, canvas, qrImage, data) {
   ctx.fillText(ctaText, cx, ctaBandY + ctaBandH / 2);
   ctx.textBaseline = 'alphabetic';
 
-  if (!isSquare) {
-    ctx.font = `800 ${Math.round(W * 0.034)}px ${FONT}`; ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText('ESITO IMMEDIATO', cx, ctaBandY + ctaBandH + Math.round(H * 0.014));
-  }
   if (expiresText) {
     ctx.font = `500 ${Math.round(W * 0.024)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText(expiresText, cx, H - Math.round(H * 0.018));
+    ctx.fillText(expiresText, cx, H - Math.round(H * 0.016));
     ctx.textBaseline = 'alphabetic';
   }
 }
@@ -1585,7 +1651,7 @@ function renderSocial(ctx, canvas, qrImage, data) {
 
 function renderStoryHook(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
-  const { primary, secondary, headline, storeName, campaignName, logoImage } = data;
+  const { primary, secondary, headline, storeName, logoImage } = data;
   const cx = W / 2;
 
   const bg = ctx.createLinearGradient(0, 0, W, H);
@@ -1618,15 +1684,9 @@ function renderStoryHook(ctx, canvas, qrImage, data) {
   ctx.beginPath(); ctx.moveTo(W * 0.2, y); ctx.lineTo(W * 0.8, y); ctx.stroke();
   y += Math.round(H * 0.045);
 
-  if (campaignName) {
-    ctx.font = `700 ${Math.round(W * 0.036)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(campaignName.length > 28 ? campaignName.slice(0, 27) + '…' : campaignName, cx, y);
-    y += Math.round(W * 0.054);
-  }
-
+  // Titolo — never campaign name
   y = drawTextBlock(ctx, {
-    text: headline, x: cx, y, maxWidth: W * 0.84, maxHeight: Math.round(H * 0.26),
+    text: headline || (data.vinciTitle || 'VINCI'), x: cx, y, maxWidth: W * 0.84, maxHeight: Math.round(H * 0.26),
     startSize: Math.round(W * 0.12), minSize: 52, weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.08
   });
 
@@ -1907,6 +1967,9 @@ function renderLed(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
   const isSquare = W === H;
   if (isSquare) { renderLedSquare(ctx, canvas, qrImage, data); return; }
+  const ratio = W / H;
+  // ~4:3 (e.g. 1024×768 ≈ 1.333)
+  if (ratio >= 1.2 && ratio <= 1.45) { renderLed43(ctx, canvas, qrImage, data); return; }
   const isHorizontal = W > H * 1.4;
   if (isHorizontal) { renderLedHoriz(ctx, canvas, qrImage, data); }
   else              { renderLedVert(ctx, canvas, qrImage, data);  }
@@ -1914,8 +1977,9 @@ function renderLed(ctx, canvas, qrImage, data) {
 
 function renderLedHoriz(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
-  const { primary, secondary, headline, cta, prizeText, storeName, expiresText, logoImage } = data;
+  const { primary, secondary, headline, subtitle, cta, prizeText, storeName, expiresText, logoImage, vinciTitle } = data;
   const prize = stripEmoji(prizeText);
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
 
   const topBarH = Math.round(H * 0.076);
   const botBarH = Math.round(H * 0.06);
@@ -1934,7 +1998,7 @@ function renderLedHoriz(ctx, canvas, qrImage, data) {
   ctx.fillStyle = topG; ctx.fillRect(0, 0, W, topBarH);
   ctx.fillStyle = hexToRgba(primary, 0.28); ctx.fillRect(0, H - botBarH, W, botBarH);
 
-  // Left brand panel — logo + store name (bigger, full white)
+  // Left brand panel — logo + store name
   const leftG = ctx.createLinearGradient(0, topBarH, leftW, topBarH + mainH);
   leftG.addColorStop(0, hexToRgba(primary, 0.24)); leftG.addColorStop(1, hexToRgba(secondary, 0.14));
   ctx.fillStyle = leftG; ctx.fillRect(0, topBarH, leftW, mainH);
@@ -1949,49 +2013,65 @@ function renderLedHoriz(ctx, canvas, qrImage, data) {
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText(storeName, leftW / 2, lY + lSz + 12);
 
-  // Center — PRIZE is the hero, headline only a small eyebrow above
+  // Center — VINCI + prize + titolo/sottotitolo
   const ctxCx = leftW + centerW / 2;
   const cG = ctx.createLinearGradient(leftW, 0, leftW + centerW, 0);
   cG.addColorStop(0, hexToRgba(secondary, 0.04)); cG.addColorStop(1, hexToRgba(primary, 0.03));
   ctx.fillStyle = cG; ctx.fillRect(leftW, topBarH, centerW, mainH);
 
-  const heroText = (prize || headline).toUpperCase();
-  let cy = topBarH + Math.round(mainH * 0.15);
-  if (prize && headline) {
-    ctx.font = `800 ${Math.round(H * 0.05)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.72)';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const eb = headline.toUpperCase();
-    ctx.fillText(eb.length > 34 ? eb.slice(0, 33) + '…' : eb, ctxCx, cy);
-    cy += Math.round(H * 0.078);
-  }
-  drawTextBlock(ctx, {
+  let cy = topBarH + Math.round(mainH * 0.1);
+  ctx.font = `900 ${Math.round(H * 0.07)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(vinciLabel, ctxCx, cy);
+  cy += Math.round(H * 0.09);
+
+  const heroText = (prize || headline || 'PREMIO').toUpperCase();
+  cy = drawTextBlock(ctx, {
     text: heroText, x: ctxCx, y: cy,
-    maxWidth: centerW * 0.94, maxHeight: topBarH + mainH - cy - Math.round(mainH * 0.06),
-    startSize: Math.round(H * 0.25), minSize: Math.round(H * 0.11),
+    maxWidth: centerW * 0.94, maxHeight: Math.round(mainH * 0.42),
+    startSize: Math.round(H * 0.2), minSize: Math.round(H * 0.1),
     weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.03
   });
+  cy += Math.round(H * 0.02);
+  if (headline) {
+    ctx.font = `700 ${Math.round(H * 0.045)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    const eb = headline.toUpperCase();
+    ctx.fillText(eb.length > 36 ? eb.slice(0, 35) + '…' : eb, ctxCx, cy);
+    cy += Math.round(H * 0.06);
+  }
+  if (subtitle) {
+    drawTextBlock(ctx, {
+      text: subtitle, x: ctxCx, y: cy,
+      maxWidth: centerW * 0.88, maxHeight: Math.round(H * 0.08),
+      startSize: Math.round(H * 0.038), minSize: Math.round(H * 0.026),
+      weight: 500, color: 'rgba(255,255,255,0.55)', maxLines: 2, lineRatio: 1.25
+    });
+  }
 
-  // Right panel — large QR + strong CTA
+  // Right panel — QR + Inquadra e gioca + Invito
   const rPanelX = W - rightW;
   ctx.fillStyle = 'rgba(255,255,255,0.034)'; ctx.fillRect(rPanelX, topBarH, rightW, mainH);
   ctx.fillStyle = hexToRgba(primary, 0.3); ctx.fillRect(rPanelX, topBarH, 3, mainH);
 
   const qrZoneCx  = rPanelX + rightW / 2;
-  const ctaFontSz = Math.round(H * 0.092);
-  const qrSz      = Math.round(mainH * 0.66);
+  const ctaFontSz = Math.round(H * 0.078);
+  const scanSz    = Math.round(H * 0.048);
+  const qrSz      = Math.round(mainH * 0.58);
   const qrPad     = Math.round(H * 0.028);
   const qrX       = qrZoneCx - qrSz / 2;
-  const qrY       = topBarH + (mainH - (qrSz + qrPad * 2 + ctaFontSz * 1.3)) / 2;
+  const qrY       = topBarH + (mainH - (qrSz + qrPad * 2 + scanSz + ctaFontSz * 1.4)) / 2;
   roundedRect(ctx, qrX - qrPad, qrY - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 14);
   ctx.fillStyle = '#ffffff'; ctx.fill();
   ctx.drawImage(qrImage, qrX, qrY, qrSz, qrSz);
+  ctx.font = `800 ${scanSz}px ${FONT}`; ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(QR_SCAN_LABEL, qrZoneCx, qrY + qrSz + qrPad + 4);
   let ctaSz = ctaFontSz;
   do { ctx.font = `900 ${ctaSz}px ${FONT}`; if (ctx.measureText(cta).width <= rightW * 0.94) break; ctaSz -= 2; } while (ctaSz > Math.round(H * 0.05));
-  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(cta, qrZoneCx, qrY + qrSz + qrPad + 6);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(cta, qrZoneCx, qrY + qrSz + qrPad + scanSz + 10);
   ctx.textBaseline = 'alphabetic';
 
-  // Expiry — minimal priority, in the bottom bar
   if (expiresText) {
     ctx.font = `600 ${Math.round(H * 0.032)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.62)';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -2002,9 +2082,10 @@ function renderLedHoriz(ctx, canvas, qrImage, data) {
 
 function renderLedVert(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
-  const { primary, secondary, headline, cta, prizeText, storeName, expiresText, logoImage } = data;
+  const { primary, secondary, headline, subtitle, cta, prizeText, storeName, expiresText, logoImage, vinciTitle } = data;
   const cx = W / 2;
   const prize = stripEmoji(prizeText);
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
 
   ctx.fillStyle = '#080d18'; ctx.fillRect(0, 0, W, H);
   const bg = ctx.createLinearGradient(0, 0, W, H);
@@ -2018,52 +2099,63 @@ function renderLedVert(ctx, canvas, qrImage, data) {
   ctx.fillStyle = tBarG; ctx.fillRect(0, 0, W, tBarH);
 
   let y = tBarH + Math.round(H * 0.03);
-  const lSz = Math.round(W * 0.3);
+  const lSz = Math.round(W * 0.28);
   drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, 14);
   y += lSz + 12;
 
-  // Store name — bigger, full white, fit to width (no truncation)
-  let vSnSz = Math.round(W * 0.07);
-  do { ctx.font = `800 ${vSnSz}px ${FONT}`; if (ctx.measureText(storeName).width <= W * 0.86) break; vSnSz -= 2; } while (vSnSz > Math.round(W * 0.045));
+  let vSnSz = Math.round(W * 0.066);
+  do { ctx.font = `800 ${vSnSz}px ${FONT}`; if (ctx.measureText(storeName).width <= W * 0.86) break; vSnSz -= 2; } while (vSnSz > Math.round(W * 0.042));
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText(storeName, cx, y);
-  y += Math.round(vSnSz * 1.35);
+  y += Math.round(vSnSz * 1.3);
 
   ctx.strokeStyle = primary; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(W * 0.16, y); ctx.lineTo(W * 0.84, y); ctx.stroke();
-  y += 16;
+  y += 14;
 
-  // Eyebrow (headline) small, then PRIZE hero
-  if (prize && headline) {
-    ctx.font = `700 ${Math.round(W * 0.05)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.66)';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const eb = headline.toUpperCase();
-    ctx.fillText(eb.length > 22 ? eb.slice(0, 21) + '…' : eb, cx, y);
-    y += Math.round(W * 0.076);
-  }
+  ctx.font = `900 ${Math.round(W * 0.07)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText(vinciLabel, cx, y);
+  y += Math.round(W * 0.09);
 
   y = drawTextBlock(ctx, {
-    text: (prize || headline).toUpperCase(), x: cx, y, maxWidth: W * 0.88, maxHeight: Math.round(H * 0.28),
-    startSize: Math.round(W * 0.14), minSize: Math.round(W * 0.072),
+    text: (prize || headline || 'PREMIO').toUpperCase(), x: cx, y, maxWidth: W * 0.88, maxHeight: Math.round(H * 0.22),
+    startSize: Math.round(W * 0.12), minSize: Math.round(W * 0.066),
     weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.04
   });
-  y += 18;
+  y += 10;
 
-  const qrSz = Math.round(W * 0.46), qrPad = Math.round(W * 0.03);
+  if (headline) {
+    ctx.font = `700 ${Math.round(W * 0.042)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    const eb = headline.toUpperCase();
+    ctx.fillText(eb.length > 24 ? eb.slice(0, 23) + '…' : eb, cx, y);
+    y += Math.round(W * 0.06);
+  }
+  if (subtitle) {
+    y = drawTextBlock(ctx, {
+      text: subtitle, x: cx, y, maxWidth: W * 0.82, maxHeight: Math.round(H * 0.06),
+      startSize: Math.round(W * 0.036), minSize: 16,
+      weight: 500, color: 'rgba(255,255,255,0.5)', maxLines: 2, lineRatio: 1.25
+    });
+    y += 10;
+  }
+
+  const qrSz = Math.round(W * 0.42), qrPad = Math.round(W * 0.028);
   roundedRect(ctx, cx - qrSz / 2 - qrPad, y - qrPad, qrSz + qrPad * 2, qrSz + qrPad * 2, 14);
   ctx.fillStyle = '#ffffff'; ctx.fill();
   ctx.drawImage(qrImage, cx - qrSz / 2, y, qrSz, qrSz);
-  y += qrSz + qrPad * 2 + 16;
+  y += qrSz + qrPad * 2 + 10;
 
-  ctx.font = `900 ${Math.round(W * 0.072)}px ${FONT}`; ctx.fillStyle = '#ffffff';
+  ctx.font = `800 ${Math.round(W * 0.048)}px ${FONT}`; ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(cta, cx, y);
-  y += Math.round(W * 0.094);
+  ctx.fillText(QR_SCAN_LABEL, cx, y);
+  y += Math.round(W * 0.07);
 
-  // Expiry — minimal priority
+  ctx.font = `900 ${Math.round(W * 0.062)}px ${FONT}`;
+  ctx.fillText(cta, cx, y);
+  y += Math.round(W * 0.08);
+
   if (expiresText) {
     ctx.font = `500 ${Math.round(W * 0.034)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillText(expiresText, cx, y);
   }
   ctx.textBaseline = 'alphabetic';
@@ -2071,65 +2163,187 @@ function renderLedVert(ctx, canvas, qrImage, data) {
 
 function renderLedSquare(ctx, canvas, qrImage, data) {
   const W = canvas.width, H = canvas.height;
-  const { primary, secondary, headline, cta, prizeText, storeName, expiresText, logoImage } = data;
+  const { primary, secondary, headline, subtitle, cta, prizeText, storeName, expiresText, logoImage, vinciTitle } = data;
   const cx = W / 2;
   const prize = stripEmoji(prizeText);
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
 
   ctx.fillStyle = '#080d18'; ctx.fillRect(0, 0, W, H);
   const bg = ctx.createLinearGradient(0, 0, W, H);
   bg.addColorStop(0, hexToRgba(primary, 0.18)); bg.addColorStop(1, hexToRgba(secondary, 0.1));
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-  // Brand accent bars top + left
   const tbH = Math.round(H * 0.05);
   const tbG = ctx.createLinearGradient(0, 0, W, 0);
   tbG.addColorStop(0, primary); tbG.addColorStop(1, secondary);
   ctx.fillStyle = tbG; ctx.fillRect(0, 0, W, tbH);
   ctx.fillStyle = primary; ctx.fillRect(0, 0, 6, H);
 
-  let y = tbH + Math.round(H * 0.035);
+  let y = tbH + Math.round(H * 0.03);
 
-  // Logo compact
-  const lSz = Math.round(W * 0.17);
+  const lSz = Math.round(W * 0.15);
   drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, 12);
-  y += lSz + 10;
+  y += lSz + 8;
 
-  // Store name — bigger, full white, fit to width (no truncation)
-  let sqSnSz = Math.round(W * 0.062);
-  do { ctx.font = `800 ${sqSnSz}px ${FONT}`; if (ctx.measureText(storeName).width <= W * 0.86) break; sqSnSz -= 2; } while (sqSnSz > Math.round(W * 0.04));
+  let sqSnSz = Math.round(W * 0.056);
+  do { ctx.font = `800 ${sqSnSz}px ${FONT}`; if (ctx.measureText(storeName).width <= W * 0.86) break; sqSnSz -= 2; } while (sqSnSz > Math.round(W * 0.036));
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText(storeName, cx, y);
-  y += Math.round(sqSnSz * 1.3);
+  y += Math.round(sqSnSz * 1.25);
 
-  // PRIZE hero (headline demoted, omitted here to give QR room)
+  ctx.font = `900 ${Math.round(W * 0.055)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText(vinciLabel, cx, y);
+  y += Math.round(W * 0.07);
+
   y = drawTextBlock(ctx, {
-    text: (prize || headline).toUpperCase(), x: cx, y, maxWidth: W * 0.88, maxHeight: Math.round(H * 0.24),
-    startSize: Math.round(W * 0.125), minSize: Math.round(W * 0.066),
+    text: (prize || headline || 'PREMIO').toUpperCase(), x: cx, y, maxWidth: W * 0.88, maxHeight: Math.round(H * 0.18),
+    startSize: Math.round(W * 0.1), minSize: Math.round(W * 0.055),
     weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.04
   });
-  y += 12;
+  y += 8;
 
-  // QR + CTA — fill remaining space, QR as large as fits
-  const reservedBot = expiresText ? Math.round(H * 0.06) : Math.round(H * 0.03);
+  if (headline) {
+    ctx.font = `700 ${Math.round(W * 0.036)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    const eb = headline.toUpperCase();
+    ctx.fillText(eb.length > 28 ? eb.slice(0, 27) + '…' : eb, cx, y);
+    y += Math.round(W * 0.05);
+  }
+  if (subtitle) {
+    y = drawTextBlock(ctx, {
+      text: subtitle, x: cx, y, maxWidth: W * 0.84, maxHeight: Math.round(H * 0.05),
+      startSize: Math.round(W * 0.03), minSize: 14,
+      weight: 500, color: 'rgba(255,255,255,0.5)', maxLines: 2, lineRatio: 1.2
+    });
+    y += 6;
+  }
+
+  const reservedBot = expiresText ? Math.round(H * 0.055) : Math.round(H * 0.028);
   const remaining   = H - y - reservedBot;
-  const ctaH  = Math.round(W * 0.07);
-  const qrPad = Math.round(W * 0.026);
-  const qrSz  = Math.round(Math.min(W * 0.46, remaining - ctaH - qrPad * 3));
-  const blockH = qrPad * 2 + qrSz + ctaH;
+  const ctaH  = Math.round(W * 0.055);
+  const scanH = Math.round(W * 0.038);
+  const qrPad = Math.round(W * 0.024);
+  const qrSz  = Math.round(Math.min(W * 0.4, remaining - ctaH - scanH - qrPad * 3));
+  const blockH = qrPad * 2 + qrSz + scanH + ctaH;
   const qy = y + Math.max(0, (remaining - blockH) / 2);
   roundedRect(ctx, cx - qrSz / 2 - qrPad, qy, qrSz + qrPad * 2, qrSz + qrPad * 2, 12);
   ctx.fillStyle = '#ffffff'; ctx.fill();
   ctx.drawImage(qrImage, cx - qrSz / 2, qy + qrPad, qrSz, qrSz);
-  ctx.font = `900 ${Math.round(W * 0.06)}px ${FONT}`; ctx.fillStyle = '#ffffff';
+  ctx.font = `800 ${Math.round(W * 0.036)}px ${FONT}`; ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText(cta, cx, qy + qrPad * 2 + qrSz + 6);
+  ctx.fillText(QR_SCAN_LABEL, cx, qy + qrPad * 2 + qrSz + 4);
+  ctx.font = `900 ${Math.round(W * 0.05)}px ${FONT}`;
+  ctx.fillText(cta, cx, qy + qrPad * 2 + qrSz + scanH + 8);
   ctx.textBaseline = 'alphabetic';
 
-  // Expiry — minimal priority
   if (expiresText) {
-    ctx.font = `500 ${Math.round(W * 0.032)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = `500 ${Math.round(W * 0.03)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText(expiresText, cx, H - Math.round(H * 0.02));
+    ctx.fillText(expiresText, cx, H - Math.round(H * 0.018));
+    ctx.textBaseline = 'alphabetic';
+  }
+}
+
+/** LED 4:3 (1024×768) — strict four-element layout + editable texts. */
+function renderLed43(ctx, canvas, qrImage, data) {
+  const W = canvas.width, H = canvas.height;
+  const {
+    primary, secondary, headline, subtitle, cta, prizeText,
+    storeName, expiresText, logoImage, vinciTitle
+  } = data;
+  const cx = W / 2;
+  const vinciLabel = (vinciTitle || 'VINCI').toUpperCase();
+  const prize = (stripEmoji(prizeText) || 'un premio').toUpperCase();
+  const invito = (cta || 'Gioca ora').trim();
+
+  ctx.fillStyle = '#080d18'; ctx.fillRect(0, 0, W, H);
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, hexToRgba(primary, 0.2));
+  bg.addColorStop(1, hexToRgba(secondary, 0.1));
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const topBar = Math.round(H * 0.045);
+  const topG = ctx.createLinearGradient(0, 0, W, 0);
+  topG.addColorStop(0, primary); topG.addColorStop(1, secondary);
+  ctx.fillStyle = topG; ctx.fillRect(0, 0, W, topBar);
+
+  // 1. Logo + store name
+  let y = topBar + Math.round(H * 0.04);
+  const lSz = Math.round(H * 0.12);
+  drawLogo(ctx, logoImage, cx - lSz / 2, y, lSz, primary, 12);
+  y += lSz + 10;
+
+  let snSz = Math.round(H * 0.048);
+  do {
+    ctx.font = `800 ${snSz}px ${FONT}`;
+    if (ctx.measureText(storeName).width <= W * 0.88) break;
+    snSz -= 2;
+  } while (snSz > 18);
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(storeName, cx, y);
+  y += Math.round(snSz * 1.35);
+
+  // 2. VINCI / VINCI SEMPRE + prize
+  ctx.font = `900 ${Math.round(H * 0.055)}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  ctx.fillText(vinciLabel, cx, y);
+  y += Math.round(H * 0.07);
+
+  y = drawTextBlock(ctx, {
+    text: prize, x: cx, y,
+    maxWidth: W * 0.9, maxHeight: Math.round(H * 0.16),
+    startSize: Math.round(H * 0.09), minSize: Math.round(H * 0.045),
+    weight: 900, color: '#ffffff', maxLines: 3, lineRatio: 1.05
+  });
+  y += Math.round(H * 0.012);
+
+  if (headline) {
+    y = drawTextBlock(ctx, {
+      text: headline, x: cx, y,
+      maxWidth: W * 0.88, maxHeight: Math.round(H * 0.06),
+      startSize: Math.round(H * 0.036), minSize: 16,
+      weight: 700, color: 'rgba(255,255,255,0.78)', maxLines: 2, lineRatio: 1.15
+    });
+    y += 6;
+  }
+  if (subtitle) {
+    y = drawTextBlock(ctx, {
+      text: subtitle, x: cx, y,
+      maxWidth: W * 0.84, maxHeight: Math.round(H * 0.055),
+      startSize: Math.round(H * 0.028), minSize: 14,
+      weight: 500, color: 'rgba(255,255,255,0.55)', maxLines: 2, lineRatio: 1.2
+    });
+    y += 8;
+  }
+
+  // 3. QR + Inquadra e gioca (+ Invito)
+  const botH = expiresText ? Math.round(H * 0.07) : Math.round(H * 0.04);
+  const remaining = H - y - botH - Math.round(H * 0.02);
+  const scanH = Math.round(H * 0.035);
+  const ctaH  = Math.round(H * 0.045);
+  const qrPad = Math.round(W * 0.018);
+  const qrSz  = Math.round(Math.min(W * 0.28, remaining - scanH - ctaH - qrPad * 2 - 12));
+  const blockH = qrPad * 2 + qrSz + scanH + ctaH + 8;
+  const qy = y + Math.max(0, (remaining - blockH) / 2);
+
+  roundedRect(ctx, cx - qrSz / 2 - qrPad, qy, qrSz + qrPad * 2, qrSz + qrPad * 2, 12);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.drawImage(qrImage, cx - qrSz / 2, qy + qrPad, qrSz, qrSz);
+
+  ctx.font = `800 ${Math.round(H * 0.032)}px ${FONT}`;
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(QR_SCAN_LABEL, cx, qy + qrPad * 2 + qrSz + 4);
+  ctx.font = `900 ${Math.round(H * 0.038)}px ${FONT}`;
+  ctx.fillText(invito, cx, qy + qrPad * 2 + qrSz + scanH + 8);
+  ctx.textBaseline = 'alphabetic';
+
+  // 4. Validity
+  if (expiresText) {
+    ctx.fillStyle = hexToRgba(primary, 0.35);
+    ctx.fillRect(0, H - botH, W, botH);
+    ctx.font = `600 ${Math.round(H * 0.028)}px ${FONT}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(expiresText, cx, H - botH / 2);
     ctx.textBaseline = 'alphabetic';
   }
 }
@@ -2180,25 +2394,29 @@ function renderLcdHorizSplit(ctx, canvas, qrImage, data) {
   ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(split * 0.1, y); ctx.lineTo(split * 0.9, y); ctx.stroke();
   y += Math.round(H * 0.03);
-  // Eyebrow (headline) small, then PRIZE hero
-  if (prizeText && headline) {
-    ctx.font = `800 ${Math.round(H * 0.03)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.85);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  // 2. VINCI / VINCI SEMPRE + prize (never campaign name)
+  const vinciLabel = (data.vinciTitle || 'VINCI').toUpperCase();
+  ctx.font = `900 ${Math.round(H * 0.036)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.9);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(vinciLabel, lCx, y);
+  y += Math.round(H * 0.05);
+  if (headline) {
+    ctx.font = `700 ${Math.round(H * 0.028)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.75);
     const eb = headline.toUpperCase();
     ctx.fillText(eb.length > 30 ? eb.slice(0, 29) + '…' : eb, lCx, y);
-    y += Math.round(H * 0.05);
+    y += Math.round(H * 0.045);
   }
   y = drawTextBlock(ctx, {
-    text: (stripEmoji(prizeText) || headline).toUpperCase(), x: lCx, y,
-    maxWidth: split * 0.86, maxHeight: Math.round(H * 0.4),
-    startSize: Math.round(H * 0.13), minSize: Math.round(H * 0.06),
+    text: (stripEmoji(prizeText) || headline || 'PREMIO').toUpperCase(), x: lCx, y,
+    maxWidth: split * 0.86, maxHeight: Math.round(H * 0.34),
+    startSize: Math.round(H * 0.11), minSize: Math.round(H * 0.055),
     weight: 900, color: '#0f172a', maxLines: 3, lineRatio: 1.04
   });
-  y += Math.round(H * 0.02);
+  y += Math.round(H * 0.016);
   if (subtitle) {
     drawTextBlock(ctx, {
-      text: subtitle, x: lCx, y, maxWidth: split * 0.76, maxHeight: Math.round(H * 0.09),
-      startSize: Math.round(H * 0.026), minSize: Math.round(H * 0.016),
+      text: subtitle, x: lCx, y, maxWidth: split * 0.76, maxHeight: Math.round(H * 0.08),
+      startSize: Math.round(H * 0.024), minSize: Math.round(H * 0.016),
       weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.4
     });
   }
@@ -2210,12 +2428,16 @@ function renderLcdHorizSplit(ctx, canvas, qrImage, data) {
   }
 
   const rCx = split + (W - split) / 2, rH = H - pad * 2;
-  const ctaBtnH = Math.round(H * 0.072);
-  const qrSz = Math.min(Math.round(rH * 0.62), Math.round((W - split) * 0.66));
+  const ctaBtnH = Math.round(H * 0.068);
+  const scanH = Math.round(H * 0.036);
+  const qrSz = Math.min(Math.round(rH * 0.55), Math.round((W - split) * 0.66));
   const qrPad = Math.round(qrSz * 0.07);
-  const qrY = pad + (rH - (qrSz + qrPad * 2 + 24 + ctaBtnH)) / 2;
-  drawQrBlock(ctx, qrImage, rCx, qrY, qrSz, qrPad, Math.round(qrSz * 0.06));
-  drawCtaButton(ctx, cta, rCx, qrY + qrSz + qrPad * 2 + 24, (W - split) * 0.72, ctaBtnH, primary, secondary);
+  const qrY = pad + (rH - (scanH + qrSz + qrPad * 2 + 16 + ctaBtnH)) / 2;
+  ctx.font = `800 ${Math.round(H * 0.028)}px ${FONT}`;
+  ctx.fillStyle = '#0f172a'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(QR_SCAN_LABEL, rCx, qrY);
+  drawQrBlock(ctx, qrImage, rCx, qrY + scanH + 4, qrSz, qrPad, Math.round(qrSz * 0.06));
+  drawCtaButton(ctx, cta, rCx, qrY + scanH + 4 + qrSz + qrPad * 2 + 14, (W - split) * 0.72, ctaBtnH, primary, secondary);
 }
 
 function renderLcdCard(ctx, canvas, qrImage, data) {
@@ -2255,37 +2477,45 @@ function renderLcdCard(ctx, canvas, qrImage, data) {
   ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(cardX + cardW * 0.12, y); ctx.lineTo(cardX + cardW * 0.88, y); ctx.stroke();
   y += Math.round(H * 0.026);
-  // Eyebrow (headline) small, then PRIZE hero
-  if (prizeText && headline) {
-    ctx.font = `800 ${Math.round(H * 0.028)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.85);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  // 2. VINCI / VINCI SEMPRE + prize
+  const vinciLabelCard = (data.vinciTitle || 'VINCI').toUpperCase();
+  ctx.font = `900 ${Math.round(H * 0.032)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.9);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(vinciLabelCard, cx, y);
+  y += Math.round(H * 0.042);
+  if (headline) {
+    ctx.font = `700 ${Math.round(H * 0.026)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.75);
     const eb = headline.toUpperCase();
     ctx.fillText(eb.length > 32 ? eb.slice(0, 31) + '…' : eb, cx, y);
-    y += Math.round(H * 0.044);
+    y += Math.round(H * 0.038);
   }
   y = drawTextBlock(ctx, {
-    text: (stripEmoji(prizeText) || headline).toUpperCase(), x: cx, y,
-    maxWidth: iW * 0.9, maxHeight: Math.round(H * 0.2),
-    startSize: Math.round(H * 0.105), minSize: 40, weight: 900, color: '#0f172a', maxLines: 3, lineRatio: 1.05
+    text: (stripEmoji(prizeText) || headline || 'PREMIO').toUpperCase(), x: cx, y,
+    maxWidth: iW * 0.9, maxHeight: Math.round(H * 0.18),
+    startSize: Math.round(H * 0.095), minSize: 36, weight: 900, color: '#0f172a', maxLines: 3, lineRatio: 1.05
   });
-  y += 14;
+  y += 12;
   if (subtitle) {
     y = drawTextBlock(ctx, {
-      text: subtitle, x: cx, y, maxWidth: iW * 0.74, maxHeight: Math.round(H * 0.07),
-      startSize: Math.round(H * 0.024), minSize: 18, weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.4
+      text: subtitle, x: cx, y, maxWidth: iW * 0.74, maxHeight: Math.round(H * 0.06),
+      startSize: Math.round(H * 0.022), minSize: 16, weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.4
     });
     y += 8;
   }
-  // QR + CTA — QR follows content flow (fills space, never overlaps prize)
+  // 3. QR + Inquadra e gioca + Invito · 4. validity
   const footerH = expiresText ? Math.round(cardH * 0.05) : Math.round(cardH * 0.02);
-  const ctaBtnH = Math.round(H * 0.058);
+  const ctaBtnH = Math.round(H * 0.055);
+  const scanH = Math.round(H * 0.028);
   const ctaBtnY = cardY + cardH - footerH - ctaBtnH - 10;
   const qrPad   = Math.round(W * 0.018);
-  const zoneTop = y + 10;
-  const zoneBot = ctaBtnY - 16;
-  const qrSz    = Math.round(Math.min(W * 0.3, zoneBot - zoneTop - qrPad * 2));
+  const zoneTop = y + 8;
+  const zoneBot = ctaBtnY - scanH - 12;
+  const qrSz    = Math.round(Math.min(W * 0.28, zoneBot - zoneTop - qrPad * 2));
   const qrStartY = zoneTop + qrPad + Math.max(0, ((zoneBot - zoneTop) - (qrSz + qrPad * 2)) / 2);
   drawQrBlock(ctx, qrImage, cx, qrStartY, qrSz, qrPad, Math.round(W * 0.012));
+  ctx.font = `800 ${Math.round(H * 0.022)}px ${FONT}`;
+  ctx.fillStyle = '#0f172a'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(QR_SCAN_LABEL, cx, qrStartY + qrSz + qrPad * 2 + 4);
   drawCtaButton(ctx, cta, cx, ctaBtnY, iW * 0.64, ctaBtnH, primary, secondary);
   if (expiresText) {
     ctx.font = `500 ${Math.round(H * 0.018)}px ${FONT}`; ctx.fillStyle = '#94a3b8';
@@ -2329,45 +2559,53 @@ function renderLcdVertLayout(ctx, canvas, qrImage, data) {
   ctx.beginPath(); ctx.moveTo(W * 0.1, y); ctx.lineTo(W * 0.9, y); ctx.stroke();
   y += Math.round(H * 0.024);
 
-  // Eyebrow (headline) small, then PRIZE hero
-  if (prizeText && headline) {
-    ctx.font = `800 ${Math.round(W * 0.044)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.85);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  // 2. VINCI / VINCI SEMPRE + prize
+  const vinciLabelV = (data.vinciTitle || 'VINCI').toUpperCase();
+  ctx.font = `900 ${Math.round(W * 0.055)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.9);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(vinciLabelV, cx, y);
+  y += Math.round(W * 0.07);
+
+  if (headline) {
+    ctx.font = `700 ${Math.round(W * 0.04)}px ${FONT}`; ctx.fillStyle = hexToRgba(primary, 0.75);
     const eb = headline.toUpperCase();
     ctx.fillText(eb.length > 26 ? eb.slice(0, 25) + '…' : eb, cx, y);
-    y += Math.round(W * 0.066);
+    y += Math.round(W * 0.058);
   }
 
   y = drawTextBlock(ctx, {
-    text: (stripEmoji(prizeText) || headline).toUpperCase(), x: cx, y,
-    maxWidth: W * 0.86, maxHeight: Math.round(H * 0.24),
-    startSize: Math.round(W * 0.135), minSize: Math.round(W * 0.07),
+    text: (stripEmoji(prizeText) || headline || 'PREMIO').toUpperCase(), x: cx, y,
+    maxWidth: W * 0.86, maxHeight: Math.round(H * 0.2),
+    startSize: Math.round(W * 0.12), minSize: Math.round(W * 0.064),
     weight: 900, color: '#0f172a', maxLines: 3, lineRatio: 1.05
   });
-  y += Math.round(H * 0.02);
+  y += Math.round(H * 0.016);
 
-  // Subtitle (optional, low priority)
   if (subtitle) {
     y = drawTextBlock(ctx, {
-      text: subtitle, x: cx, y, maxWidth: W * 0.76, maxHeight: Math.round(H * 0.07),
-      startSize: Math.round(W * 0.036), minSize: 22,
+      text: subtitle, x: cx, y, maxWidth: W * 0.76, maxHeight: Math.round(H * 0.06),
+      startSize: Math.round(W * 0.034), minSize: 20,
       weight: 400, color: '#64748b', maxLines: 2, lineRatio: 1.4
     });
-    y += Math.round(H * 0.016);
+    y += Math.round(H * 0.012);
   }
 
-  // QR + CTA — fill the space down to a minimal expiry line (no empty gap)
+  // 3. QR + Inquadra e gioca + Invito · 4. validity
   const expH      = expiresText ? Math.round(W * 0.046) : 0;
-  const ctaBtnH   = Math.round(W * 0.1);
+  const ctaBtnH   = Math.round(W * 0.09);
+  const scanH     = Math.round(W * 0.04);
   const bottomPad = Math.round(H * 0.028);
   const ctaY      = H - bottomPad - expH - ctaBtnH;
-  const qrPad     = Math.round(W * 0.03);
-  const zoneTop   = y + Math.round(H * 0.02);
-  const zoneBot   = ctaY - Math.round(H * 0.03);
-  const qrSz      = Math.round(Math.min(W * 0.54, zoneBot - zoneTop - qrPad * 2));
+  const qrPad     = Math.round(W * 0.028);
+  const zoneTop   = y + Math.round(H * 0.016);
+  const zoneBot   = ctaY - scanH - Math.round(H * 0.02);
+  const qrSz      = Math.round(Math.min(W * 0.48, zoneBot - zoneTop - qrPad * 2));
   const qrStartY  = zoneTop + qrPad + Math.max(0, ((zoneBot - zoneTop) - (qrSz + qrPad * 2)) / 2);
 
   drawQrBlock(ctx, qrImage, cx, qrStartY, qrSz, qrPad, Math.round(qrSz * 0.06));
+  ctx.font = `800 ${Math.round(W * 0.036)}px ${FONT}`;
+  ctx.fillStyle = '#0f172a'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(QR_SCAN_LABEL, cx, qrStartY + qrSz + qrPad * 2 + 6);
   drawCtaButton(ctx, cta, cx, ctaY, W * 0.72, ctaBtnH, primary, secondary);
 
   if (expiresText) {
@@ -2402,15 +2640,17 @@ async function renderCanvas(formatKey = formatPreviewSelect.value) {
     try { logoImage = await loadImage(state.store.logoUrl); } catch { /* use initials */ }
   }
 
-  const mainPrize = getMainPrize(campaign);
+  const vinci     = getVinciHeading(campaign);
   const primary   = state.store.primaryColor   || '#667eea';
   const secondary = state.store.secondaryColor || '#764ba2';
+  const defaults  = getMaterialDefaults(campaign);
 
   const data = {
-    headline:     headlineInput.value.trim() || 'Inquadra e vinci',
-    subtitle:     subtitleInput.value.trim(),
-    cta:          ctaInput.value.trim() || 'Gioca ora',
-    prizeText:    mainPrize ? `${mainPrize.emoji || ''} ${mainPrize.name}`.trim() : '',
+    headline:     headlineInput.value.trim() || defaults.headline,
+    subtitle:     subtitleInput.value.trim() || defaults.subtitle,
+    cta:          ctaInput.value.trim() || defaults.cta,
+    prizeText:    ContentLogic.getPrizeDisplayText(campaign),
+    vinciTitle:   vinci.title,
     campaignName: campaign.name,
     storeName:    state.store.name,
     primary, secondary,
@@ -2521,7 +2761,7 @@ const QR_MIN_PX = { print: 250, social: 200, facebook: 180, led: 140, lcd: 190, 
 // Safe margin from each canvas edge per format key
 const SAFE_MARGIN_PX = {
   a4: 60, vertical: 32, square: 32, facebook: 28, story: 32,
-  led_h: 16, led_v: 16, led_sq: 16, '16x9': 28, '4x3': 28, lcd_v: 28,
+  led_h: 16, led_v: 16, led_sq: 16, led_43: 16, '16x9': 28, '4x3': 28, lcd_v: 28,
 };
 
 /**
@@ -3035,6 +3275,11 @@ function populateCampaigns() {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('embed') === '1') {
+    document.body.classList.add('embed');
+  }
+
   if (!sessionStorage.getItem('gv_store_user')) {
     show(loginHint);
     return;
@@ -3048,6 +3293,23 @@ async function init() {
     state.campaigns = campaigns;
     storeLabel.textContent = `${me.store.name} · ${campaigns.length} campagne`;
     populateCampaigns();
+
+    const campaignId = params.get('campaign');
+    if (campaignId && state.campaigns.some((c) => c.id === campaignId)) {
+      campaignSelect.value = campaignId;
+    }
+
+    const selected = getSelectedCampaign();
+    if (selected) applyMaterialDefaultsIfNeeded(selected, null);
+    state._prevCampaignId = campaignSelect.value;
+
+    const qHeadline = params.get('headline');
+    const qSubtitle = params.get('subtitle');
+    const qCta = params.get('cta');
+    if (qHeadline) headlineInput.value = qHeadline;
+    if (qSubtitle) subtitleInput.value = qSubtitle;
+    if (qCta) ctaInput.value = qCta;
+
     show(contentApp);
     await renderCanvas();
   } catch (error) {
@@ -3059,7 +3321,14 @@ async function init() {
 // ─── Event listeners ──────────────────────────────────────────────────────────
 
 renderBtn.addEventListener('click', () => renderCanvas());
-campaignSelect.addEventListener('change', () => renderCanvas());
+campaignSelect.addEventListener('change', () => {
+  const prevId = state._prevCampaignId;
+  const prev = prevId ? state.campaigns.find((c) => c.id === prevId) : null;
+  const selected = getSelectedCampaign();
+  if (selected) applyMaterialDefaultsIfNeeded(selected, prev);
+  state._prevCampaignId = campaignSelect.value;
+  renderCanvas();
+});
 formatPreviewSelect.addEventListener('change', () => {
   updateStoryNav(formatPreviewSelect.value);
   renderCanvas();
@@ -3092,6 +3361,7 @@ document.getElementById('downloadStoryBtn').addEventListener('click', downloadSt
 document.getElementById('downloadLedHBtn').addEventListener('click', () => downloadCanvas('led_h'));
 document.getElementById('downloadLedVBtn').addEventListener('click', () => downloadCanvas('led_v'));
 document.getElementById('downloadLedSqBtn').addEventListener('click', () => downloadCanvas('led_sq'));
+document.getElementById('downloadLed43Btn').addEventListener('click', () => downloadCanvas('led_43'));
 document.getElementById('download16x9Btn').addEventListener('click', () => downloadCanvas('16x9'));
 document.getElementById('download4x3Btn').addEventListener('click', () => downloadCanvas('4x3'));
 document.getElementById('downloadLcdVBtn').addEventListener('click', () => downloadCanvas('lcd_v'));
@@ -3158,6 +3428,44 @@ function runTests() {
 
   console.log(`\n  Risultato M1: ${passed}/${passed + failed} test superati`);
   if (failed > 0) console.warn(`  ⚠️  ${failed} test falliti — verificare getMainPrize`);
+  console.groupEnd();
+
+  // ── ContentLogic: defaults / VINCI / four elements ─────────────────────────
+  console.group('[M1b] ContentLogic materials helpers');
+  let m1bP = 0, m1bF = 0;
+  function assert1b(name, condition) {
+    if (condition) { console.log(`  ✅ PASS — ${name}`); m1bP++; }
+    else           { console.warn(`  ❌ FAIL — ${name}`); m1bF++; }
+  }
+  const demoCamp = {
+    guaranteedWin: false,
+    endDate: '2026-12-31',
+    prizeItems: [
+      { name: 'Birra 50cl gratis', emoji: '🍺', winProbability: 0.2, totalQuantity: 50, active: true },
+      { name: 'Sconto 10%', winProbability: 0.8, totalQuantity: 200, active: true },
+    ],
+  };
+  const defs = getMaterialDefaults(demoCamp);
+  assert1b('getMaterialDefaults headline', defs.headline === 'Vinci Birra 50cl gratis');
+  assert1b('getMaterialDefaults subtitle', defs.subtitle.includes('Inquadra il codice'));
+  assert1b('getMaterialDefaults cta', defs.cta === 'Gioca ora');
+  const vh = getVinciHeading(demoCamp);
+  assert1b('getVinciHeading VINCI', vh.title === 'VINCI' && vh.prizeLine === 'Birra 50cl gratis');
+  const vhG = getVinciHeading({ ...demoCamp, guaranteedWin: true });
+  assert1b('getVinciHeading VINCI SEMPRE', vhG.title === 'VINCI SEMPRE' && vhG.prizeLine.includes('Birra'));
+  const four = ContentLogic.materialFourElements(demoCamp, { name: 'Bar del Porto' }, {
+    expiresText: 'Valido fino al 31/12/2026',
+  });
+  assert1b('materialFourElements brand', four.brand.includes('Bar del Porto'));
+  assert1b('materialFourElements vinci', /VINCI/i.test(four.vinci));
+  assert1b('materialFourElements qr', four.qr === 'Inquadra e gioca');
+  assert1b('materialFourElements validity', four.validity.includes('Valido'));
+  assert1b('assertMaterialFourElements ok', (() => {
+    try { ContentLogic.assertMaterialFourElements(four); return true; }
+    catch { return false; }
+  })());
+  assert1b('FORMAT led_43 presente', !!FORMAT_SIZES.led_43 && FORMAT_SIZES.led_43.width === 1024);
+  console.log(`\n  Risultato M1b: ${m1bP}/${m1bP + m1bF} test superati`);
   console.groupEnd();
 
   // ── M2: validateLayout ────────────────────────────────────────────────────
