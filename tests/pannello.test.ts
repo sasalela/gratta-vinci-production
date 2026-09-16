@@ -84,6 +84,52 @@ describe('pannello — normalizzazione negozio nuovo', () => {
   });
 });
 
+describe('pannello — altre campagne (indipendente da larghezza)', () => {
+  const campaigns = [
+    { id: 'a', name: 'Attiva', active: true },
+    { id: 'b', name: 'Estate', active: false },
+    { id: 'c', name: 'Inverno', active: false }
+  ];
+
+  it('con altre campagne: mode list, stesso risultato a ogni “larghezza” simulata', () => {
+    const widths = [320, 390, 768, 1024, 1280, 1920];
+    const results = widths.map((w) => {
+      // la funzione NON accetta width — prova del rosso se qualcuno lo introduisse
+      const model = StoreLogic.otherCampaignsViewModel(campaigns, 'a');
+      assert.equal(typeof StoreLogic.otherCampaignsViewModel.length, 'number');
+      assert.ok(StoreLogic.otherCampaignsViewModel.length <= 2, 'non deve dipendere da viewport/width');
+      assert.equal(model.mode, 'list');
+      assert.equal(model.title, 'Altre campagne');
+      assert.equal(model.campaigns.length, 2);
+      assert.equal(model.emptyMessage, null);
+      return { width: w, mode: model.mode, count: model.campaigns.length };
+    });
+    assert.ok(results.every((r) => r.mode === 'list' && r.count === 2));
+  });
+
+  it('solo attiva o nessuna: mode empty con Nessun\'altra campagna, sezione non nascosta', () => {
+    const solo = StoreLogic.otherCampaignsViewModel([{ id: 'a', name: 'Solo' }], 'a');
+    assert.equal(solo.mode, 'empty');
+    assert.equal(solo.emptyMessage, "Nessun'altra campagna");
+    assert.deepEqual(solo.campaigns, []);
+
+    const none = StoreLogic.otherCampaignsViewModel([], null);
+    assert.equal(none.mode, 'empty');
+    assert.equal(none.emptyMessage, "Nessun'altra campagna");
+  });
+
+  it('rosso: non accetta e non usa un argomento width', () => {
+    const fn = StoreLogic.otherCampaignsViewModel;
+    assert.ok(fn.length <= 2);
+    const src = fn.toString();
+    assert.equal(/\bwidth\b|\bviewport\b|\binnerWidth\b|\bmatchMedia\b/.test(src), false);
+    // chiamare con un terzo argomento “width” non deve cambiare l’esito
+    const a = fn(campaigns, 'a');
+    const b = fn(campaigns, 'a', 1920);
+    assert.deepEqual(a, b);
+  });
+});
+
 describe('pannello — premio principale', () => {
   it('sceglie il premio attivo con probabilità più bassa', () => {
     const main = ContentLogic.getMainPrize(demoCampaign);

@@ -265,6 +265,33 @@ function normalizePanelData({
   };
 }
 
+/**
+ * What the "Altre campagne" block should show.
+ * Independent of viewport width — never hide the section based on layout.
+ *
+ * @param {Array} campaigns
+ * @param {string|null|undefined} primaryId active campaign id (excluded from list)
+ * @returns {{ mode: 'list'|'empty', title: string, emptyMessage: string|null, campaigns: Array }}
+ */
+function otherCampaignsViewModel(campaigns, primaryId) {
+  const list = Array.isArray(campaigns) ? campaigns : [];
+  const others = list.filter((c) => c && c.id != null && c.id !== primaryId);
+  if (!others.length) {
+    return {
+      mode: 'empty',
+      title: 'Altre campagne',
+      emptyMessage: "Nessun'altra campagna",
+      campaigns: []
+    };
+  }
+  return {
+    mode: 'list',
+    title: 'Altre campagne',
+    emptyMessage: null,
+    campaigns: others
+  };
+}
+
 /** Resize image file to max 256px, return data URL (jpeg) under maxBytes. */
 async function resizeLogoFile(file, maxPx = 256, maxBytes = 150 * 1024) {
   if (!file || !file.type || !file.type.startsWith('image/')) {
@@ -321,6 +348,7 @@ const StoreLogicExports = {
   normalizeCampaigns,
   normalizeSubscription,
   normalizePanelData,
+  otherCampaignsViewModel,
   resizeLogoFile,
   EMOJI_GRID
 };

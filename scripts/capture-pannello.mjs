@@ -12,8 +12,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 const outDir = join(root, 'docs/screenshots/pannello');
 const nuovoDir = join(outDir, 'nuovo');
+const desktopDir = join(outDir, 'desktop');
 mkdirSync(outDir, { recursive: true });
 mkdirSync(nuovoDir, { recursive: true });
+mkdirSync(desktopDir, { recursive: true });
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -97,6 +99,12 @@ const demoCampaign = {
   ]
 };
 
+const pienoCampaigns = [
+  demoCampaign,
+  { ...demoCampaign, id: 'c2', name: 'Estate', active: false, slug: 'estate', stats: { totalPlays: 4, wins: 1, redeemedVouchers: 0 }, totalPlays: 4, wins: 1 },
+  { ...demoCampaign, id: 'c3', name: 'Inverno', active: false, slug: 'inverno', stats: { totalPlays: 2, wins: 0, redeemedVouchers: 0 }, totalPlays: 2, wins: 0 }
+];
+
 async function mockApis(page, {
   store = demoStore,
   campaigns = [demoCampaign],
@@ -146,6 +154,50 @@ async function checkNoOverflow(page, width) {
   return { width, overflow };
 }
 
+async function checkCruscottoLayout(page, width, storeKind) {
+  await page.setViewportSize({ width, height: 900 });
+  return page.evaluate(({ w, kind }) => {
+    const section = document.getElementById('otherCampaignsSection');
+    const title = section?.querySelector('.section-title')?.textContent?.trim() || '';
+    const style = section ? getComputedStyle(section) : null;
+    const rect = section?.getBoundingClientRect();
+    const visible = Boolean(
+      section
+      && !section.classList.contains('hidden')
+      && style?.display !== 'none'
+      && style?.visibility !== 'hidden'
+      && (rect?.height || 0) > 0
+      && (rect?.width || 0) > 0
+    );
+    const emptyText = section?.querySelector('.other-empty')?.textContent?.trim() || '';
+    const cards = section?.querySelectorAll('.other-card')?.length || 0;
+    const logo = document.getElementById('dashLogo')?.getBoundingClientRect();
+    const badge = logo ? Math.round(logo.width) : 0;
+    const badgeH = logo ? Math.round(logo.height) : 0;
+    const expectedBadge = w >= 768 ? 80 : 64;
+    const doc = document.documentElement;
+    const overflowX = doc.scrollWidth > doc.clientWidth + 1;
+    const okTitle = title === 'Altre campagne';
+    const okContent = kind === 'nuovo'
+      ? emptyText.includes("Nessun'altra campagna") && cards === 0
+      : cards >= 2 && !emptyText;
+    const okBadge = badge === expectedBadge && badgeH === expectedBadge;
+    return {
+      store: kind,
+      width: w,
+      title,
+      visible,
+      emptyText,
+      cards,
+      badge,
+      badgeH,
+      expectedBadge,
+      overflowX,
+      ok: okTitle && visible && okContent && okBadge && !overflowX
+    };
+  }, { w: width, kind: storeKind });
+}
+
 async function checkHeaderLayout(page, width) {
   await page.setViewportSize({ width, height: 844 });
   return page.evaluate((w) => {
@@ -167,11 +219,15 @@ async function checkHeaderLayout(page, width) {
 }
 
 function writeIndexHtml(images) {
-  const figures = images.map((rel) => `
+  const figures = images.map((rel) => {
+    const wide = rel.includes('desktop/');
+    const w = wide ? 960 : 390;
+    return `
   <figure>
     <figcaption>${rel}</figcaption>
-    <img src="${rel}" alt="${rel}" width="390" />
-  </figure>`).join('\n');
+    <img src="${rel}" alt="${rel}" width="${w}" style="max-width:100%;height:auto" />
+  </figure>`;
+  }).join('\n');
   writeFileSync(join(outDir, 'index.html'), `<!DOCTYPE html>
 <html lang="it">
 <head>
@@ -183,7 +239,7 @@ function writeIndexHtml(images) {
     h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 24px; }
     figure { margin: 0 0 32px; padding: 0; }
     figcaption { font-size: 0.875rem; margin-bottom: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    img { display: block; width: 390px; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
+    img { display: block; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
   </style>
 </head>
 <body>
@@ -212,10 +268,7 @@ async function main() {
   });
 
   await mockApis(page, {
-    campaigns: [
-      demoCampaign,
-      { ...demoCampaign, id: 'c2', name: 'Estate', active: false, stats: { totalPlays: 4 } }
-    ]
+    campaigns: pienoCampaigns
   });
   await page.goto(`${base}/store.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#activePromoCard h2');
@@ -279,14 +332,18 @@ async function main() {
     subTitle: document.getElementById('subscriptionTitle')?.textContent,
     createBtn: Boolean(document.getElementById('createPromoBtn')),
     otherHidden: document.getElementById('otherCampaignsSection')?.classList.contains('hidden'),
+    otherText: document.getElementById('otherCampaignsSection')?.innerText || '',
     alertsHidden: document.getElementById('alertsList')?.classList.contains('hidden'),
     promoText: document.getElementById('activePromoCard')?.innerText || ''
   }));
   if (!nuovoSnap.createBtn || !nuovoSnap.promoText.includes('Crea la tua promozione')) {
     throw new Error(`Negozio nuovo: cruscotto incompleto ${JSON.stringify(nuovoSnap)}`);
   }
-  if (!nuovoSnap.otherHidden || !nuovoSnap.alertsHidden) {
-    throw new Error(`Negozio nuovo: contenitori vuoti visibili ${JSON.stringify(nuovoSnap)}`);
+  if (nuovoSnap.otherHidden || !nuovoSnap.otherText.includes("Nessun'altra campagna")) {
+    throw new Error(`Negozio nuovo: sezione altre campagne assente ${JSON.stringify(nuovoSnap)}`);
+  }
+  if (!nuovoSnap.alertsHidden) {
+    throw new Error(`Negozio nuovo: alerts visibili a vuoto ${JSON.stringify(nuovoSnap)}`);
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: join(nuovoDir, 'cruscotto-390.png'), fullPage: true });
@@ -310,16 +367,47 @@ async function main() {
 
   const reports = [];
   const headerReports = [];
+  const layoutTable = [];
+  const widths = [320, 390, 768, 1024, 1280, 1920];
+
   await page.unroute('**/api/**');
   await mockApis(page, { store: newStore, campaigns: [] });
   await page.goto(`${base}/store.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#createPromoBtn');
-  for (const w of [320, 390, 768, 1280]) {
-    reports.push(await checkNoOverflow(page, w));
+  for (const w of widths) {
+    reports.push({ ...(await checkNoOverflow(page, w)), store: 'nuovo' });
+    layoutTable.push(await checkCruscottoLayout(page, w, 'nuovo'));
   }
   for (const w of [320, 390]) {
     headerReports.push(await checkHeaderLayout(page, w));
   }
+
+  await page.unroute('**/api/**');
+  await mockApis(page, { store: demoStore, campaigns: pienoCampaigns });
+  await page.goto(`${base}/store.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#activePromoCard h2');
+  for (const w of widths) {
+    reports.push({ ...(await checkNoOverflow(page, w)), store: 'pieno' });
+    layoutTable.push(await checkCruscottoLayout(page, w, 'pieno'));
+  }
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.unroute('**/api/**');
+  await mockApis(page, { store: newStore, campaigns: [] });
+  await page.goto(`${base}/store.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#createPromoBtn');
+  await page.screenshot({ path: join(desktopDir, 'cruscotto-nuovo-1280.png'), fullPage: true });
+
+  await page.unroute('**/api/**');
+  await mockApis(page, { store: demoStore, campaigns: pienoCampaigns });
+  await page.goto(`${base}/store.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#activePromoCard h2');
+  await page.screenshot({ path: join(desktopDir, 'cruscotto-pieno-1280.png'), fullPage: true });
+
+  await page.unroute('**/api/**');
+  await mockApis(page, { store: newStore, campaigns: [] });
+  await page.goto(`${base}/store.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#createPromoBtn');
   await page.setViewportSize({ width: 320, height: 844 });
   await page.click('#createPromoBtn');
   await page.waitForSelector('#wizardStep1:not(.hidden)');
@@ -368,13 +456,16 @@ async function main() {
     'nuovo/cruscotto-390.png',
     'nuovo/abbonamento-non-disponibile.png',
     'nuovo/register-320.png',
-    'nuovo/register-390.png'
+    'nuovo/register-390.png',
+    'desktop/cruscotto-nuovo-1280.png',
+    'desktop/cruscotto-pieno-1280.png'
   ]);
 
   console.log(JSON.stringify({
     outDir,
     nuovoSnap,
     subFail,
+    layoutTable,
     reports,
     headerReports,
     registerReports,
@@ -382,9 +473,14 @@ async function main() {
     pageErrors
   }, null, 2));
 
+  const badLayout = layoutTable.filter((r) => !r.ok);
   const badOverflow = reports.filter((r) => r.overflow.overflowX);
   const badHeader = headerReports.filter((r) => r.nameUnderButtons || r.truncated);
   const badRegister = registerReports.filter((r) => r.overflowX || !r.singleCol || !r.btnFull);
+  if (badLayout.length) {
+    console.error('LAYOUT table failed', badLayout);
+    process.exitCode = 1;
+  }
   if (badOverflow.length) {
     console.error('OVERFLOW-X detected', badOverflow);
     process.exitCode = 1;

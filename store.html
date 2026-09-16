@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pannello Negozio — Gratta & Vinci</title>
-  <link rel="stylesheet" href="store.css?v=3.0.1">
+  <link rel="stylesheet" href="store.css?v=3.1.0">
 </head>
 <body>
   <main class="page">
@@ -67,13 +67,19 @@
       </section>
 
       <!-- ── CRUSCOTTO ─────────────────────────────────────────── -->
-      <section id="viewDashboard" class="view-panel">
+      <section id="viewDashboard" class="view-panel cruscotto">
         <article id="activePromoCard" class="promo-hero card">
           <!-- filled by JS -->
         </article>
-        <section id="otherCampaignsSection" class="other-campaigns hidden">
+        <section id="otherCampaignsSection" class="other-campaigns">
           <h2 class="section-title">Altre campagne</h2>
           <div id="otherCampaigns" class="other-list"></div>
+        </section>
+        <section id="dashActions" class="dash-actions card">
+          <h2 class="section-title">Azioni</h2>
+          <div id="dashActionsBody" class="dash-actions-body">
+            <button type="button" class="primary full hit" id="dashCreatePromoBtn">Crea nuova promozione</button>
+          </div>
         </section>
       </section>
 
@@ -359,7 +365,7 @@
     </section>
   </main>
 
-  <script src="store-logic.js?v=3.0.1"></script>
-  <script src="store.js?v=3.0.1"></script>
+  <script src="store-logic.js?v=3.1.0"></script>
+  <script src="store.js?v=3.1.0"></script>
 </body>
 </html>

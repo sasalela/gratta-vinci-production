@@ -1,6 +1,6 @@
 const USER_KEY = 'gv_store_user';
 const SL = globalThis.StoreLogic;
-if (!SL || typeof SL.storeInitials !== 'function' || typeof SL.normalizePanelData !== 'function') {
+if (!SL || typeof SL.storeInitials !== 'function' || typeof SL.normalizePanelData !== 'function' || typeof SL.otherCampaignsViewModel !== 'function') {
   throw new Error('StoreLogic non disponibile: caricare store-logic.js prima di store.js.');
 }
 
@@ -216,6 +216,7 @@ function switchView(name) {
     if (!el) return;
     el.classList.toggle('hidden', key !== name);
   });
+  appSection?.classList.toggle('dash-mode', name === 'dashboard');
   hide(altroMenu);
   altroBtn.setAttribute('aria-expanded', 'false');
   if (name === 'wizard') renderWizardStep();
@@ -262,6 +263,7 @@ function campaignRedeemed(campaign) {
 
 function renderDashboard() {
   renderDashBrand();
+  appSection?.classList.toggle('dash-mode', state.view === 'dashboard');
   const primary = getPrimaryCampaign();
   if (!primary) {
     activePromoCard.innerHTML = `
@@ -288,14 +290,15 @@ function renderDashboard() {
     `;
   }
 
-  const others = state.campaigns.filter((c) => !primary || c.id !== primary.id);
+  const view = SL.otherCampaignsViewModel(state.campaigns, primary?.id ?? null);
   const otherSection = document.getElementById('otherCampaignsSection');
-  if (!others.length) {
-    otherCampaigns.innerHTML = '';
-    otherSection?.classList.add('hidden');
+  const titleEl = otherSection?.querySelector('.section-title');
+  if (titleEl) titleEl.textContent = view.title;
+  otherSection?.classList.remove('hidden');
+  if (view.mode === 'empty') {
+    otherCampaigns.innerHTML = `<p class="other-empty muted">${escapeHtml(view.emptyMessage)}</p>`;
   } else {
-    otherSection?.classList.remove('hidden');
-    otherCampaigns.innerHTML = others.map((c) => `
+    otherCampaigns.innerHTML = view.campaigns.map((c) => `
       <article class="other-card">
         <div>
           <strong>${escapeHtml(c.name)}</strong>
@@ -305,6 +308,22 @@ function renderDashboard() {
         <button type="button" class="ghost small hit" data-edit-campaign="${escapeHtml(c.id)}">Apri</button>
       </article>
     `).join('');
+  }
+
+  const actionsBody = document.getElementById('dashActionsBody');
+  if (actionsBody) {
+    if (primary) {
+      actionsBody.innerHTML = `
+        <button type="button" class="primary full hit" id="dashCreatePromoBtn">Crea nuova promozione</button>
+        <a class="secondary full hit" href="/content.html?campaign=${encodeURIComponent(primary.id)}">Scarica i materiali</a>
+        <button type="button" class="ghost full hit" data-view="vouchers">Valida un premio</button>
+      `;
+    } else {
+      actionsBody.innerHTML = `
+        <button type="button" class="primary full hit" id="dashCreatePromoBtn">Crea la tua promozione</button>
+      `;
+    }
+    actionsBody.querySelector('#dashCreatePromoBtn')?.addEventListener('click', () => startWizard(null));
   }
 }
 
@@ -993,6 +1012,7 @@ async function logout() {
 async function showApp() {
   hide(loginSection);
   show(appSection);
+  appSection.classList.toggle('dash-mode', state.view === 'dashboard');
   await loadAll();
 }
 
