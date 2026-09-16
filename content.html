@@ -32,13 +32,13 @@
         <select id="campaignSelect"></select>
 
         <p class="section-label">Testi</p>
-        <label for="headlineInput">Titolo principale</label>
+        <label for="headlineInput">Titolo</label>
         <input id="headlineInput" type="text" value="Inquadra e vinci">
 
-        <label for="subtitleInput">Sottotitolo / descrizione</label>
+        <label for="subtitleInput">Sottotitolo</label>
         <textarea id="subtitleInput" rows="2">Partecipa e scopri subito il tuo premio.</textarea>
 
-        <label for="ctaInput">Call to action</label>
+        <label for="ctaInput">Invito</label>
         <input id="ctaInput" type="text" value="Gioca ora">
 
         <hr>
@@ -78,6 +78,7 @@
             <label><input type="checkbox" data-format="led_h"> Orizzontale (1920×576)</label>
             <label><input type="checkbox" data-format="led_v"> Verticale (576×1024)</label>
             <label><input type="checkbox" data-format="led_sq"> Quadrato (800×800)</label>
+            <label><input type="checkbox" data-format="led_43"> 4:3 (1024×768)</label>
           </div>
         </div>
 
@@ -116,6 +117,7 @@
             <option value="led_h">LED orizzontale</option>
             <option value="led_v">LED verticale</option>
             <option value="led_sq">LED quadrato</option>
+            <option value="led_43">LED 4:3</option>
           </optgroup>
           <optgroup label="LCD">
             <option value="16x9">LCD 16:9</option>
@@ -162,6 +164,7 @@
         <button id="downloadLedHBtn"  type="button">LED orizzontale</button>
         <button id="downloadLedVBtn"  type="button">LED verticale</button>
         <button id="downloadLedSqBtn" type="button">LED quadrato</button>
+        <button id="downloadLed43Btn" type="button">LED 4:3</button>
 
         <p class="hint">LCD</p>
         <button id="download16x9Btn" type="button">LCD 16:9</button>
@@ -198,6 +201,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="content-logic.js"></script>
   <script src="content.js"></script>
 </body>
 </html>

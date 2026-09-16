@@ -11,7 +11,7 @@ body {
 }
 
 .page {
-  max-width: 1240px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -318,4 +318,34 @@ canvas {
     min-height: 320px;
     padding: 10px;
   }
+}
+
+/* ── Embed mode (?embed=1) ───────────────────────────────────────── */
+
+body.embed .topbar {
+  margin-bottom: 12px;
+  padding: 14px 16px;
+}
+
+body.embed .topbar h1 {
+  font-size: 1.15rem;
+}
+
+body.embed .topbar .actions,
+body.embed .eyebrow {
+  display: none;
+}
+
+body.embed .page {
+  max-width: none;
+  padding: 12px;
+}
+
+body.embed .layout {
+  gap: 14px;
+}
+
+body.embed .canvas-wrap {
+  min-height: 360px;
+  padding: 12px;
 }
