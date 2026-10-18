@@ -138,10 +138,24 @@ model User {
   partnerId    String?
   partner      Partner? @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   active       Boolean  @default(true)
+  emailVerifiedAt DateTime?
   createdAt    DateTime @default(now())
   redemptions  Redemption[]
+  verificationTokens EmailVerificationToken[]
 
   @@index([partnerId])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Redemption {

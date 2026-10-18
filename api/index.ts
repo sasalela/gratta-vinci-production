@@ -1,8 +1,23 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from 'crypto';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/db';
+import { toPublicError } from '../lib/errors';
+import { checkDatabaseHealth } from '../lib/health';
+import { consumeAuthLimit, type AuthLimitKind } from '../lib/rate-limit';
+import { createMailer } from '../lib/mailer';
+import {
+  buildVerificationEmail,
+  hashVerificationToken,
+  isVerificationRecordUsable,
+  newVerificationToken,
+  verificationExpiry
+} from '../lib/verification';
+import { resolveAppBaseUrl } from '../lib/app-url';
+import { staffAccessDecision } from '../lib/access';
+import { applySecurityHeaders } from '../lib/security-headers';
+import { adjustedRemainingQuantity, initialRemainingQuantity } from '../lib/prize-stock';
 import {
   buildRevealPayload,
   executePlay,
@@ -142,13 +157,20 @@ const PrizeSchema = z.object({
   description: z.string().optional(),
   winProbability: z.number().min(0).max(100),
   totalQuantity: z.number().int().min(0),
-  remainingQuantity: z.number().int().min(0).optional(),
   active: z.boolean().default(true)
 });
 
 const RedeemVoucherSchema = z.object({
   code: z.string().min(3),
   notes: z.string().optional()
+});
+
+const VerifyEmailSchema = z.object({
+  token: z.string().min(20).max(200)
+});
+
+const ResendVerificationSchema = z.object({
+  email: z.string().email().max(200)
 });
 
 const SubscriptionRequestSchema = z.object({
@@ -308,7 +330,7 @@ function verifyToken(token: string | null): AuthTokenPayload | null {
 }
 
 function selectPrize(prizes: Prize[]): Prize {
-  const random = Math.random() * 100;
+  const random = (randomInt(0, 1_000_000_000) / 1_000_000_000) * 100;
   let cumulative = 0;
 
   for (const prize of prizes) {
@@ -464,7 +486,7 @@ function buildComposerProposal(
 
   let gameType: 'scratch_card' | 'wheel' | 'instant_reveal' = 'wheel';
   let guaranteedWin = true;
-  let prizes: Array<z.infer<typeof PrizeSchema>> = [];
+  let prizes: Array<z.infer<typeof PrizeSchema> & { remainingQuantity: number }> = [];
   const loseMessage = 'Nessun premio questa volta. Riprova domani!';
 
   if (input.rewardStyle === 'single_prize') {
@@ -691,6 +713,41 @@ async function getCampaignPrizeProbabilitySummary(campaignId: string) {
   return { prizes, totalProbability };
 }
 
+function rejectIfRateLimited(
+  res: VercelResponse,
+  kind: AuthLimitKind,
+  key: string
+): boolean {
+  const result = consumeAuthLimit(kind, key);
+  if (result.allowed) return false;
+  res.setHeader('Retry-After', String(result.retryAfterSeconds));
+  res.status(429).json({
+    success: false,
+    error: 'Troppe richieste. Riprova tra qualche minuto.',
+    code: 'RATE_LIMITED'
+  });
+  return true;
+}
+
+async function issueShopVerification(req: VercelRequest, userId: string, email: string): Promise<void> {
+  const rawToken = newVerificationToken();
+  const tokenHash = hashVerificationToken(rawToken);
+  const expiresAt = verificationExpiry();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.emailVerificationToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() }
+    });
+    await tx.emailVerificationToken.create({
+      data: { userId, tokenHash, expiresAt }
+    });
+  });
+
+  const verifyUrl = `${resolveAppBaseUrl(req)}/register.html?verify=${encodeURIComponent(rawToken)}`;
+  await createMailer().send(buildVerificationEmail({ to: email, verifyUrl }));
+}
+
 async function validateCampaignPrizeProbabilities(campaignId: string, guaranteedWin: boolean) {
   const { prizes, totalProbability } = await getCampaignPrizeProbabilitySummary(campaignId);
 
@@ -717,6 +774,7 @@ async function validateCampaignPrizeProbabilities(campaignId: string, guaranteed
 // ==========================================
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  applySecurityHeaders(res);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -734,13 +792,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`[${method}] ${path}`);
 
     if (path === '/api/health') {
-      await prisma.$queryRaw`SELECT 1`;
-      return res.json({
-        status: 'ok',
-        version: '2.1.0',
-        database: 'connected',
-        timestamp: new Date().toISOString()
-      });
+      const health = await checkDatabaseHealth(() => prisma.$queryRaw`SELECT 1`);
+      return res.status(health.httpStatus).json(health.body);
     }
 
     if (path === '/api/public/qr' && method === 'GET') {
@@ -766,6 +819,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (path === '/api/auth/login' && method === 'POST') {
+      const clientIp = getClientIp(req);
+      const rawEmail = typeof req.body?.email === 'string' ? req.body.email.toLowerCase().trim() : 'invalid';
+      if (rejectIfRateLimited(res, 'login', `ip:${clientIp}`)) return;
+      if (rejectIfRateLimited(res, 'login', `email:${rawEmail}`)) return;
+
       const validation = LoginSchema.safeParse(req.body);
 
       if (!validation.success) {
@@ -808,6 +866,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
+      if (!user.emailVerifiedAt) {
+        return res.status(403).json({
+          success: false,
+          error: 'Conferma l’email prima di accedere. Controlla la posta o richiedi un nuovo link.',
+          code: 'EMAIL_NOT_VERIFIED'
+        });
+      }
+
       if (shouldUpgradePasswordHash(user.passwordHash)) {
         await prisma.user.update({
           where: { id: user.id },
@@ -847,6 +913,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (path === '/api/auth/register-store' && method === 'POST') {
+      if (rejectIfRateLimited(res, 'register', `ip:${getClientIp(req)}`)) return;
+
       const validation = RegisterStoreSchema.safeParse(req.body);
 
       if (!validation.success) {
@@ -910,35 +978,108 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name: data.ownerName,
             role: 'store_owner',
             storeId: store.id,
-            active: true
+            active: true,
+            emailVerifiedAt: null
           }
         });
 
         return { store, user };
       });
 
-      const storeToken = signToken({
-        sub: created.user.id,
-        role: created.user.role,
-        storeId: created.user.storeId,
-        partnerId: created.user.partnerId
-      });
-      res.setHeader('Set-Cookie', setSessionCookie(storeToken, req));
+      let emailSent = true;
+      try {
+        await issueShopVerification(req, created.user.id, email);
+      } catch (error) {
+        emailSent = false;
+        console.error('[mailer] verification email failed', error);
+      }
+
       return res.status(201).json({
         success: true,
         data: {
-          token: storeToken,
+          verificationRequired: true,
+          emailSent,
           trialDays,
-          store: created.store,
-          user: {
-            id: created.user.id,
-            email: created.user.email,
-            name: created.user.name,
-            role: created.user.role,
-            storeId: created.user.storeId
-          }
+          message: emailSent
+            ? 'Account creato. Ti abbiamo inviato un’email per confermare l’indirizzo.'
+            : 'Account creato. Non siamo riusciti a inviare l’email: richiedi un nuovo link tra poco.'
         }
       });
+    }
+
+    if (path === '/api/auth/verify-email' && method === 'POST') {
+      if (rejectIfRateLimited(res, 'verify', `ip:${getClientIp(req)}`)) return;
+
+      const validation = VerifyEmailSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          error: 'Link di conferma non valido o scaduto.',
+          code: 'VERIFICATION_INVALID'
+        });
+      }
+
+      const tokenHash = hashVerificationToken(validation.data.token);
+      const verified = await prisma.$transaction(async (tx) => {
+        const record = await tx.emailVerificationToken.findUnique({ where: { tokenHash } });
+        if (!record || !isVerificationRecordUsable(record)) return false;
+
+        const spent = await tx.emailVerificationToken.updateMany({
+          where: { id: record.id, usedAt: null },
+          data: { usedAt: new Date() }
+        });
+        if (spent.count !== 1) return false;
+
+        await tx.user.update({
+          where: { id: record.userId },
+          data: { emailVerifiedAt: new Date() }
+        });
+        return true;
+      });
+
+      if (!verified) {
+        return res.status(400).json({
+          success: false,
+          error: 'Link di conferma non valido o scaduto.',
+          code: 'VERIFICATION_INVALID'
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: { verified: true, message: 'Email confermata. Ora puoi accedere.' }
+      });
+    }
+
+    if (path === '/api/auth/resend-verification' && method === 'POST') {
+      if (rejectIfRateLimited(res, 'resend', `ip:${getClientIp(req)}`)) return;
+
+      const validation = ResendVerificationSchema.safeParse(req.body);
+      const generic = {
+        success: true,
+        data: {
+          message: 'Se l’account esiste e non è ancora confermato, abbiamo inviato una nuova email.'
+        }
+      };
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          error: 'Indirizzo email non valido.',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+
+      const email = validation.data.email.toLowerCase().trim();
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (user && user.active && !user.emailVerifiedAt) {
+        try {
+          await issueShopVerification(req, user.id, email);
+        } catch (error) {
+          console.error('[mailer] verification resend failed', error);
+        }
+      }
+
+      return res.json(generic);
     }
 
     if (path === '/api/public/games' && method === 'GET') {
@@ -1214,6 +1355,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const storeId = currentUser.storeId;
+      const staffBlock = staffAccessDecision(currentUser.role, method || 'GET', path);
+      if (staffBlock) {
+        return res.status(staffBlock.status).json({
+          success: false,
+          error: staffBlock.error,
+          code: staffBlock.code
+        });
+      }
 
       if (path === '/api/store/me' && method === 'GET') {
         const store = await prisma.store.findUnique({
@@ -1558,7 +1707,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           data: {
             ...validation.data,
             campaignId,
-            remainingQuantity: validation.data.remainingQuantity ?? validation.data.totalQuantity
+            remainingQuantity: initialRemainingQuantity(validation.data.totalQuantity)
           } as any
         });
 
@@ -1592,11 +1741,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(404).json({ success: false, error: 'Campaign not found' });
         }
 
+        const existingPrize = await prisma.prize.findFirst({
+          where: { id: prizeId, campaignId }
+        });
+        if (!existingPrize) {
+          return res.status(404).json({ success: false, error: 'Prize not found' });
+        }
+
         await prisma.prize.updateMany({
           where: { id: prizeId, campaignId },
           data: {
             ...validation.data,
-            remainingQuantity: validation.data.remainingQuantity ?? validation.data.totalQuantity
+            remainingQuantity: adjustedRemainingQuantity(existingPrize, validation.data.totalQuantity)
           }
         });
         const prize = await prisma.prize.findFirst({
@@ -1896,7 +2052,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             email: userData.email.toLowerCase().trim(),
             storeId,
             partnerId: null,
-            passwordHash: hashPassword(password)
+            passwordHash: hashPassword(password),
+            emailVerifiedAt: new Date()
           } as any,
           select: {
             id: true,
@@ -2191,7 +2348,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             email: userData.email.toLowerCase().trim(),
             storeId: userData.role === 'partner_owner' ? null : storeId,
             partnerId: userData.role === 'partner_owner' ? partnerId : null,
-            passwordHash: hashPassword(password)
+            passwordHash: hashPassword(password),
+            emailVerifiedAt: new Date()
           } as any,
           select: {
             id: true,
@@ -2471,7 +2629,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await prisma.user.create({
         data: {
           ...userData,
-          passwordHash: hashPassword(password)
+          passwordHash: hashPassword(password),
+          emailVerifiedAt: new Date()
         } as any,
         select: {
           id: true,
@@ -2569,12 +2728,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       error: 'Not found'
     });
   } catch (error: unknown) {
-    console.error('API Error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      message
-    });
+    const publicError = toPublicError(error);
+    return res.status(publicError.status).json(publicError.body);
   }
 }
