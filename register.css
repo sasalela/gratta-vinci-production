@@ -161,6 +161,12 @@ button:disabled {
   opacity: 0.6;
 }
 
+button.secondary {
+  background: transparent;
+  border: 2px solid #667eea;
+  color: #334155;
+}
+
 .login-link {
   display: block;
   font-weight: 800;

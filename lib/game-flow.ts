@@ -2,6 +2,7 @@
  * Percorso di gioco: logica estratta da api/index.ts senza cambiare comportamento.
  * Consente test con Prisma mockato in memoria.
  */
+import { randomInt } from 'node:crypto';
 
 export type GamePrizeRow = {
   id: string;
@@ -77,6 +78,10 @@ export type GamePrisma = {
   voucher: {
     findFirst: (args: any) => Promise<GameVoucherRow | null>;
     update: (args: any) => Promise<GameVoucherRow>;
+    updateMany: (args: any) => Promise<{ count: number }>;
+  };
+  redemption?: {
+    create: (args: any) => Promise<unknown>;
   };
   campaign: {
     findFirst: (args: any) => Promise<GameCampaignRow | null>;
@@ -89,13 +94,20 @@ export type GamePrisma = {
   $transaction: <T>(fn: (tx: GamePrisma) => Promise<T>) => Promise<T>;
 };
 
+const VOUCHER_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+/** Uniform value in [0, 1). Cryptographic source, not Math.random. */
+export function secureUnitRandom(): number {
+  return randomInt(0, 1_000_000_000) / 1_000_000_000;
+}
+
 export function generateVoucherCode(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let code = '';
   for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    code += VOUCHER_ALPHABET.charAt(randomInt(VOUCHER_ALPHABET.length));
   }
-  return `${code}-${Date.now().toString(36).toUpperCase()}`;
+  const suffix = randomInt(0, 0x100000000).toString(16).toUpperCase().padStart(8, '0');
+  return `${code}-${suffix}`;
 }
 
 export function buildSessionKey(params: {
@@ -144,7 +156,7 @@ export async function pickInventoryPrize(
   campaignId: string,
   guaranteedWin = false,
   tx: GamePrisma,
-  rng: () => number = Math.random
+  rng: () => number = secureUnitRandom
 ) {
   const prizes = await tx.prize.findMany({
     where: {
@@ -249,7 +261,7 @@ export async function executePlay(params: {
     signRevealToken
   } = params;
   const now = params.now ?? new Date();
-  const rng = params.rng ?? Math.random;
+  const rng = params.rng ?? secureUnitRandom;
   const generateCode = params.generateCode ?? generateVoucherCode;
 
   if (!campaign) {
@@ -390,36 +402,58 @@ export async function executeRedeem(params: {
 }): Promise<RedeemSuccess | RedeemFailure> {
   const now = params.now ?? new Date();
 
-  const voucher = await params.db.voucher.findFirst({
-    where: { code: params.code, storeId: params.storeId }
-  });
+  return params.db.$transaction(async (tx) => {
+    const voucher = await tx.voucher.findFirst({
+      where: { code: params.code, storeId: params.storeId }
+    });
 
-  if (!voucher) {
-    return { kind: 'not_found' };
-  }
-
-  if (voucher.redeemed) {
-    return { kind: 'already_redeemed' };
-  }
-
-  if (now > voucher.expiresAt) {
-    return { kind: 'expired' };
-  }
-
-  const redeemed = await params.db.voucher.update({
-    where: { id: voucher.id },
-    data: {
-      redeemed: true,
-      redeemedAt: now,
-      redeemedByUserId: params.userId,
-      redemptions: {
-        create: {
-          userId: params.userId,
-          notes: params.notes
-        }
-      }
+    if (!voucher) {
+      return { kind: 'not_found' };
     }
-  });
 
-  return { kind: 'ok', voucher: redeemed };
+    if (voucher.redeemed) {
+      return { kind: 'already_redeemed' };
+    }
+
+    if (now > voucher.expiresAt) {
+      return { kind: 'expired' };
+    }
+
+    const updated = await tx.voucher.updateMany({
+      where: {
+        id: voucher.id,
+        storeId: params.storeId,
+        redeemed: false
+      },
+      data: {
+        redeemed: true,
+        redeemedAt: now,
+        redeemedByUserId: params.userId
+      }
+    });
+
+    if (updated.count !== 1) {
+      return { kind: 'already_redeemed' };
+    }
+
+    if (tx.redemption) {
+      await tx.redemption.create({
+        data: {
+          voucherId: voucher.id,
+          userId: params.userId,
+          notes: params.notes ?? null
+        }
+      });
+    }
+
+    return {
+      kind: 'ok',
+      voucher: {
+        ...voucher,
+        redeemed: true,
+        redeemedAt: now,
+        redeemedByUserId: params.userId
+      }
+    };
+  });
 }

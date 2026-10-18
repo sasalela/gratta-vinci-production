@@ -660,7 +660,6 @@ async function saveWizardCampaign() {
           emoji: prize.emoji || '🎁',
           description: prize.description || '',
           totalQuantity: Number(prize.totalQuantity) || 1,
-          remainingQuantity: Number(prize.totalQuantity) || 1,
           winProbability: Number(prize.winProbability) || 1,
           active: prize.active !== false
         })
@@ -674,9 +673,6 @@ async function saveWizardCampaign() {
         emoji: prize.emoji || '🎁',
         description: prize.description || '',
         totalQuantity: Number(prize.totalQuantity) || 1,
-        remainingQuantity: prize.id != null
-          ? Number(prize.remainingQuantity)
-          : Number(prize.totalQuantity) || 1,
         winProbability: Number(prize.winProbability) || 1,
         active: prize.active !== false
       };
@@ -984,6 +980,10 @@ function stopQrScanner() {
   scannerStatus.textContent = 'Inquadra il QR della card premio.';
 }
 
+function isStaffUser(user) {
+  return user?.role === 'staff';
+}
+
 async function login() {
   clearError(loginError);
   try {
@@ -995,6 +995,10 @@ async function login() {
       })
     });
     sessionStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    if (isStaffUser(data.user)) {
+      window.location.href = '/redeem.html';
+      return;
+    }
     await showApp();
   } catch (error) {
     setError(loginError, error.message);
@@ -1223,5 +1227,14 @@ profileLogoFile.addEventListener('change', async () => {
 });
 
 if (sessionStorage.getItem(USER_KEY)) {
-  showApp();
+  try {
+    const savedUser = JSON.parse(sessionStorage.getItem(USER_KEY));
+    if (isStaffUser(savedUser)) {
+      window.location.href = '/redeem.html';
+    } else {
+      showApp();
+    }
+  } catch {
+    showApp();
+  }
 }

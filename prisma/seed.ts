@@ -28,7 +28,8 @@ async function main() {
     where: { email: 'bar@giorgio.it' },
     update: {
       storeId: store.id,
-      active: true
+      active: true,
+      emailVerifiedAt: new Date()
     },
     create: {
       email: 'bar@giorgio.it',
@@ -36,7 +37,8 @@ async function main() {
       name: 'Bar da Giorgio',
       role: 'store_owner',
       storeId: store.id,
-      active: true
+      active: true,
+      emailVerifiedAt: new Date()
     }
   });
 
@@ -114,7 +116,8 @@ async function main() {
     where: { email: 'info@deluxehair.it' },
     update: {
       storeId: hairStore.id,
-      active: true
+      active: true,
+      emailVerifiedAt: new Date()
     },
     create: {
       email: 'info@deluxehair.it',
@@ -122,7 +125,8 @@ async function main() {
       name: 'Deluxe Boutique Hair',
       role: 'store_owner',
       storeId: hairStore.id,
-      active: true
+      active: true,
+      emailVerifiedAt: new Date()
     }
   });
 

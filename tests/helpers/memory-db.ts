@@ -146,6 +146,27 @@ export function createMemoryGameDb(seed?: {
           });
         }
         return { ...voucher };
+      },
+      async updateMany(args: any) {
+        const targets = state.vouchers.filter((v) => matchesWhere(v as any, args?.where));
+        for (const voucher of targets) {
+          if (args?.data?.redeemed !== undefined) voucher.redeemed = args.data.redeemed;
+          if (args?.data?.redeemedAt !== undefined) voucher.redeemedAt = args.data.redeemedAt;
+          if (args?.data?.redeemedByUserId !== undefined) {
+            voucher.redeemedByUserId = args.data.redeemedByUserId;
+          }
+        }
+        return { count: targets.length };
+      }
+    },
+    redemption: {
+      async create(args: any) {
+        state.redemptions.push({
+          voucherId: args.data.voucherId,
+          userId: args.data.userId,
+          notes: args.data.notes
+        });
+        return args.data;
       }
     },
     campaign: {

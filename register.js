@@ -1,5 +1,3 @@
-const USER_KEY = 'gv_store_user';
-
 const form = document.getElementById('registerForm');
 const registerBtn = document.getElementById('registerBtn');
 const errorBox = document.getElementById('errorBox');
@@ -17,6 +15,7 @@ const logoFile = document.getElementById('logoFile');
 const primaryColor = document.getElementById('primaryColor');
 const secondaryColor = document.getElementById('secondaryColor');
 const termsAccepted = document.getElementById('termsAccepted');
+const resendBtn = document.getElementById('resendBtn');
 
 async function resizeLogoFile(file, maxPx = 256, maxBytes = 150 * 1024) {
   if (!file || !file.type || !file.type.startsWith('image/')) {
@@ -125,11 +124,8 @@ async function registerStore(event) {
       throw new Error(validation || payload.error || 'Registrazione non riuscita.');
     }
 
-    sessionStorage.setItem(USER_KEY, JSON.stringify(payload.data.user));
-    showSuccess(`Account creato. Trial attivo per ${payload.data.trialDays} giorni.`);
-    setTimeout(() => {
-      window.location.href = '/store.html';
-    }, 900);
+    showSuccess(payload.data.message || 'Controlla la email per confermare l’account.');
+    if (resendBtn) show(resendBtn);
   } catch (error) {
     showError(error.message);
   } finally {
@@ -138,8 +134,57 @@ async function registerStore(event) {
   }
 }
 
+async function resendVerification() {
+  hide(errorBox);
+  resendBtn.disabled = true;
+  try {
+    const response = await fetch('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.value.trim() })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Invio non riuscito. Riprova tra poco.');
+    }
+    showSuccess(payload.data?.message || 'Se l’account non è ancora confermato, controlla la posta.');
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    resendBtn.disabled = false;
+  }
+}
+
+async function confirmEmail(token) {
+  hide(errorBox);
+  registerBtn.disabled = true;
+  try {
+    const response = await fetch('/api/auth/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Link di conferma non valido o scaduto.');
+    }
+    showSuccess(payload.data?.message || 'Email confermata. Ora puoi accedere.');
+    window.history.replaceState({}, '', '/register.html');
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    registerBtn.disabled = false;
+  }
+}
+
 storeName.addEventListener('input', () => {
   storeSlug.value = slugify(storeName.value);
 });
 
 form.addEventListener('submit', registerStore);
+if (resendBtn) resendBtn.addEventListener('click', resendVerification);
+
+const verifyToken = new URLSearchParams(window.location.search).get('verify');
+if (verifyToken) {
+  confirmEmail(verifyToken);
+}
